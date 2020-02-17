@@ -27,6 +27,28 @@ class alexnet(nn.Module):
         feat_ab = self.ab_to_l(ab, layer)
         return feat_l, feat_ab
 
+class MyAlexNetCMC_c(nn.Module):
+    def __init__(self, feat_dim=128):
+        super(MyAlexNetCMC_c, self).__init__()
+        self.encoder = alexnet(feat_dim=feat_dim)
+        self.encoder = nn.DataParallel(self.encoder)
+
+    def forward(self, x, layer=8):
+        return self.encoder(x, layer)
+
+
+class alexnet_c(nn.Module):
+    def __init__(self, feat_dim=128):
+        super(alexnet_c, self).__init__()
+
+        self.c_a = alexnet_half(in_channel=3, feat_dim=feat_dim)
+        self.c_b = alexnet_half(in_channel=3, feat_dim=feat_dim)
+
+    def forward(self, x_a, x_b, layer=8):
+        # l, ab = torch.split(x, [1, 2], dim=1)
+        feat_a = self.c_a(x_a, layer)
+        feat_b = self.c_b(x_b, layer)
+        return feat_a, feat_b
 
 class alexnet_half(nn.Module):
     def __init__(self, in_channel=1, feat_dim=128):

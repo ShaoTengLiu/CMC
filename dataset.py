@@ -6,6 +6,7 @@ from skimage import color
 import torch
 import torchvision.datasets as datasets
 
+# class CIFAR_C() create a datasets if you need
 
 class ImageFolderInstance(datasets.ImageFolder):
     """Folder datasets which returns the index of the image as well

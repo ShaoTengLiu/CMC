@@ -160,7 +160,39 @@ def get_train_loader(args):
     print('number of samples: {}'.format(n_data))
 
     return train_loader, n_data
+def get_train_loader_c(args):
+    """get the train loader"""
+    common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
+					'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
+					'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+    trsize = 50000
 
+    if args.view in common_corruptions:
+        # print('Train on %s level %d' %(args.corruption, args.level))
+        print('Train on %s' %(args.view))
+        trset_raw_a = np.load(args.data_folder + 'clean/train/images.npy')
+        trset_raw_b = np.load(args.data_folder + 'CIFAR-10-C-trainval/train/%s_4_images.npy' %(args.corruption))
+        # trset_raw_b = trset_raw_b[(args.level-1)*trsize: args.level*trsize]
+        trset_raw = np.concatenate((trset_raw_a, trset_raw_b), axis=0)
+        trset = torchvision.datasets.CIFAR10(root=args.dataroot,
+                train=True, download=True, transform=tr_transforms)
+        trset.data = trset_raw
+    else:
+		raise Exception('Corruption not found!')
+
+    NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    train_transforms = transforms.Compose([transforms.RandomCrop(32, padding=4),
+									    transforms.RandomHorizontalFlip(),
+									    transforms.ToTensor(),
+									    transforms.Normalize(*NORM)])
+    # train loader
+	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
+											shuffle=True, num_workers=args.workers)
+    # num of samples
+    n_data = len(trset)
+    print('number of samples: {}'.format(n_data))
+
+    return train_loader,  n_data
 
 def set_model(args, n_data):
     # set the model
@@ -183,7 +215,27 @@ def set_model(args, n_data):
         cudnn.benchmark = True
 
     return model, contrast, criterion_ab, criterion_l
+def set_model_c(args, n_data):
+    # set the model
+    if args.model == 'alexnet':
+        model = MyAlexNetCMC_c(args.feat_dim)
+    elif args.model.startswith('resnet'):
+        model = MyResNetsCMC(args.model)
+    else:
+        raise ValueError('model not supported yet {}'.format(args.model))
 
+    contrast = NCEAverage(args.feat_dim, n_data, args.nce_k, args.nce_t, args.nce_m, args.softmax)
+    criterion_b = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
+    criterion_a = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
+
+    if torch.cuda.is_available():
+        model = model.cuda()
+        contrast = contrast.cuda()
+        criterion_b = criterion_b.cuda()
+        criterion_a = criterion_a.cuda()
+        cudnn.benchmark = True
+
+    return model, contrast, criterion_b, criterion_a
 
 def set_optimizer(args, model):
     # return optimizer
@@ -265,6 +317,82 @@ def train(epoch, train_loader, model, contrast, criterion_l, criterion_ab, optim
             sys.stdout.flush()
 
     return l_loss_meter.avg, l_prob_meter.avg, ab_loss_meter.avg, ab_prob_meter.avg
+def train_c(epoch, train_loader, model, contrast, criterion_a, criterion_b, optimizer, opt):
+    """
+    one epoch training
+    """
+    model.train()
+    contrast.train()
+
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
+    a_loss_meter = AverageMeter()
+    b_loss_meter = AverageMeter()
+    a_prob_meter = AverageMeter()
+    b_prob_meter = AverageMeter()
+
+    end = time.time()
+    for idx, (inputs, _, index) in enumerate(train_loader):
+        data_time.update(time.time() - end)
+
+        bsz = inputs.size(0)
+        inputs = inputs.float()
+
+        input_a, input_b = torch.chunk(inputs, 2)
+
+        if torch.cuda.is_available():
+            index = index.cuda(async=True)
+            # inputs = inputs.cuda()
+            input_a = input_a.cuda()
+            input_b = input_b.cuda()
+
+        # ===================forward=====================
+        feat_a, feat_b = model(input_a, input_b)
+        out_a, out_b = contrast(feat_a, feat_b, index)
+
+        a_loss = criterion_a(out_a)
+        b_loss = criterion_b(out_b)
+        a_prob = out_a[:, 0].mean()
+        b_prob = out_b[:, 0].mean()
+
+        loss = a_loss + b_loss
+
+        # ===================backward=====================
+        optimizer.zero_grad()
+        if opt.amp:
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            loss.backward()
+        optimizer.step()
+
+        # ===================meters=====================
+        losses.update(loss.item(), bsz)
+        a_loss_meter.update(a_loss.item(), bsz)
+        a_prob_meter.update(a_prob.item(), bsz)
+        b_loss_meter.update(b_loss.item(), bsz)
+        b_prob_meter.update(b_prob.item(), bsz)
+
+        torch.cuda.synchronize()
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        # print info
+        if (idx + 1) % opt.print_freq == 0:
+            print('Train: [{0}][{1}/{2}]\t'
+                  'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  'loss {loss.val:.3f} ({loss.avg:.3f})\t'
+                  'a_p {aprobs.val:.3f} ({aprobs.avg:.3f})\t'
+                  'b_p {bprobs.val:.3f} ({bprobs.avg:.3f})'.format(
+                   epoch, idx + 1, len(train_loader), batch_time=batch_time,
+                   data_time=data_time, loss=losses, lprobs=a_prob_meter,
+                   abprobs=b_prob_meter))
+            print(out_a.shape)
+            sys.stdout.flush()
+
+    return a_loss_meter.avg, a_prob_meter.avg, b_loss_meter.avg, b_prob_meter.avg
 
 
 def main():
