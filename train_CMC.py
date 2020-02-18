@@ -405,10 +405,7 @@ def train_c(epoch, train_loader, model, contrast, criterion_a, criterion_b, opti
 			input_b = input_b.cuda()
 
 		# ===================forward=====================
-		print(input_a.size())
-		print(index.size())
 		feat_a, feat_b = model(input_a, input_b)
-		print(feat_a.size())
 		out_a, out_b = contrast(feat_a, feat_b, index)
 
 		a_loss = criterion_a(out_a)
