@@ -66,7 +66,8 @@ class alexnet_cc(nn.Module):
 	def forward(self, x, layer=8):
 		#####
 		l = x.float().cuda()
-		ab = torch.from_numpy(C_list()[self.corruption](x)).float().cuda()
+		# ab = torch.from_numpy(C_list()[self.corruption](x)).float().cuda()
+		ab = torch.from_numpy(C_list()[self.corruption](x.cpu().detach().numpy())).float().cuda()
 		##### This is strange
 		feat_l = self.l_to_ab(l, layer)
 		feat_ab = self.ab_to_l(ab, layer)

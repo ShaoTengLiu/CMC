@@ -207,6 +207,7 @@ def get_train_loader_cc(args):
 										transforms.RandomHorizontalFlip(),
 										transforms.ToTensor(),
 										transforms.Normalize(*NORM)])
+										
 	if args.view in common_corruptions:
 		# print('Train on %s level %d' %(args.corruption, args.level))
 		print('Train on %s' %(args.view))
