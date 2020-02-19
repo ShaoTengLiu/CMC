@@ -226,6 +226,31 @@ def get_train_loader_cc(args):
 	print('number of samples: {}'.format(n_data))
 
 	return trloader,  n_data
+def get_train_loader_b(args):
+	"""get the train loader"""
+	trsize = 50000
+	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+	tr_transforms = transforms.Compose([#transforms.RandomCrop(32, padding=4), # 32 -> 256
+										transforms.Resize(224),
+										transforms.RandomHorizontalFlip(),
+										transforms.ToTensor(),
+										transforms.Normalize(*NORM)])
+										
+	# print('Train on %s level %d' %(args.corruption, args.level))
+	print('Train on %s' %(args.view))
+	trset_raw = np.load(args.data_folder + 'clean/train/images.npy')
+	trset = datasets.CIFAR10(root=args.data_folder,
+			train=True, download=True, transform=tr_transforms)
+	trset.data = trset_raw
+
+	# train loader
+	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
+											shuffle=True, num_workers=args.num_workers)
+	# num of samples
+	n_data = len(trset)
+	print('number of samples: {}'.format(n_data))
+
+	return trloader,  n_data
 
 def set_model(args, n_data):
 	# set the model
@@ -531,7 +556,8 @@ def main():
 	args = parse_option()
 
 	# set the loader
-	train_loader, n_data = get_train_loader(args)
+	# train_loader, n_data = get_train_loader(args)
+	train_loader, n_data = get_train_loader_b(args) # change to this if testing on cifar as baseline
 
 	# set the model
 	model, contrast, criterion_ab, criterion_l = set_model(args, n_data)
@@ -760,6 +786,7 @@ def main_cc():
 
 if __name__ == '__main__':
 	main_cc()
+	# main()
 
 # Readme
 # c is designed for loading existing data with corruption

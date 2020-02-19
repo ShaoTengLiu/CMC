@@ -61,6 +61,7 @@ def parse_option():
 
 	# add new views
 	parser.add_argument('--view', type=str, default='Lab')
+	parser.add_argument('--corruption', type=str, default='original')
 	parser.add_argument('--level', type=int, default=5, help='The level of corruption')
 	# path definition
 	parser.add_argument('--data_folder', type=str, default=None, help='path to data')
@@ -95,6 +96,7 @@ def parse_option():
 																  opt.weight_decay)
 
 	opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
+	# one may change this view into corruption to make the name more reasonable
 
 	opt.tb_folder = os.path.join(opt.tb_path, opt.model_name + '_layer{}'.format(opt.layer))
 	if not os.path.isdir(opt.tb_folder):
@@ -207,6 +209,50 @@ def get_train_val_loader_cc(args):
 	teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size,
 											shuffle=True, num_workers=args.num_workers)
 	return trloader, teloader
+def get_train_val_loader_b(args):
+	"""get the train loader"""
+	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
+				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
+				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+	trsize = 50000
+	tesize = 10000
+	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+	tr_transforms = transforms.Compose([#transforms.RandomCrop(32, padding=4), # 32 -> 256
+										transforms.Resize(224),
+										transforms.RandomHorizontalFlip(),
+										transforms.ToTensor(),
+										transforms.Normalize(*NORM)])
+	te_transforms = transforms.Compose([transforms.Resize(224),
+										transforms.ToTensor(),
+										transforms.Normalize(*NORM)])
+
+	print('Train on %s' %(args.dataset))
+	trset_raw = np.load(args.data_folder + '/clean/train/images.npy')
+	trlabel_raw = np.load(args.data_folder + '/clean/train/labels.npy')
+	trset = datasets.CIFAR10(root=args.data_folder,
+			train=True, download=True, transform=tr_transforms)
+	trset.data = trset_raw
+	trset.target = trlabel_raw
+
+	if args.corruption in common_corruptions:
+		# print('Train on %s level %d' %(args.corruption, args.level))
+		print('Test on %s' %(args.view))
+		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
+		telabel_raw = np.load(args.data_folder + 'CIFAR-10-C-trainval/val/labels.npy')[(args.level-1)*tesize: args.level*tesize]
+		teset = datasets.CIFAR10(root=args.data_folder,
+				train=True, download=True, transform=te_transforms)
+		teset.data = teset_raw
+		teset.target = telabel_raw
+	else:
+		raise Exception('Corruption not found!')
+
+	# train loader
+	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
+											shuffle=True, num_workers=args.num_workers)
+	teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size,
+											shuffle=True, num_workers=args.num_workers)
+	return trloader, teloader
+# one can combine cc and b by letting corruption = views
 
 def set_model(args):
 	if args.model.startswith('alexnet'):
@@ -404,7 +450,7 @@ def main():
 		print("Use GPU: {} for training".format(args.gpu))
 
 	# set the data loader
-	train_loader, val_loader, train_sampler = get_train_val_loader(args)
+	train_loader, val_loader = get_train_val_loader_b(args)
 
 	# set the model
 	model, classifier, criterion = set_model(args)
@@ -621,5 +667,5 @@ def main_cc():
 
 if __name__ == '__main__':
 	best_acc1 = 0
-	# main()
-	main_cc()
+	main()
+	# main_cc()
