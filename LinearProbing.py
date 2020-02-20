@@ -189,7 +189,7 @@ def get_train_val_loader_cc(args):
 	trset = datasets.CIFAR10(root=args.data_folder,
 			train=True, download=True, transform=tr_transforms)
 	trset.data = trset_raw
-	trset.target = trlabel_raw
+	trset.targets = trlabel_raw
 
 	if args.view in common_corruptions:
 		# print('Train on %s level %d' %(args.corruption, args.level))
@@ -197,9 +197,9 @@ def get_train_val_loader_cc(args):
 		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.view, str(args.level - 1)))
 		telabel_raw = np.load(args.data_folder + 'CIFAR-10-C-trainval/val/labels.npy')[(args.level-1)*tesize: args.level*tesize]
 		teset = datasets.CIFAR10(root=args.data_folder,
-				train=True, download=True, transform=te_transforms)
+				train=False, download=True, transform=te_transforms)
 		teset.data = teset_raw
-		teset.target = telabel_raw
+		teset.targets = telabel_raw
 	else:
 		raise Exception('Corruption not found!')
 
@@ -232,17 +232,20 @@ def get_train_val_loader_b(args):
 	trset = datasets.CIFAR10(root=args.data_folder,
 			train=True, download=True, transform=tr_transforms)
 	trset.data = trset_raw
-	trset.target = trlabel_raw
+	trset.targets = trlabel_raw
 
 	if args.corruption in common_corruptions:
 		# print('Train on %s level %d' %(args.corruption, args.level))
-		print('Test on %s' %(args.view))
-		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
+		print('Test on %s' %(args.corruption))
+		# teset_raw = np.load(args.data_folder + '/clean/val/images.npy') # use these two if you want to test on clean data
+		# telabel_raw = np.load(args.data_folder + '/clean/val/labels.npy')
+		# teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
+		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s.npy' %(args.corruption))[(args.level-1)*tesize: args.level*tesize]
 		telabel_raw = np.load(args.data_folder + 'CIFAR-10-C-trainval/val/labels.npy')[(args.level-1)*tesize: args.level*tesize]
 		teset = datasets.CIFAR10(root=args.data_folder,
-				train=True, download=True, transform=te_transforms)
+				train=False, download=True, transform=te_transforms)
 		teset.data = teset_raw
-		teset.target = telabel_raw
+		teset.targets = telabel_raw
 	else:
 		raise Exception('Corruption not found!')
 
@@ -288,7 +291,7 @@ def set_model(args):
 	return model, classifier, criterion
 def set_model_cc(args):
 	if args.model.startswith('alexnet'):
-		model = MyAlexNetCMC_cc()
+		model = MyAlexNetCMC_cc(corruption=args.view)
 		classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
 	elif args.model.startswith('resnet'):
 		model = MyResNetsCMC(args.model)
@@ -356,6 +359,9 @@ def train(epoch, train_loader, model, classifier, criterion, optimizer, opt):
 			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
 
 		output = classifier(feat)
+		##### This may be not neccessary
+		target = target.long()
+		#####
 		loss = criterion(output, target)
 
 		acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -403,7 +409,6 @@ def validate(val_loader, model, classifier, criterion, opt):
 	with torch.no_grad():
 		end = time.time()
 		for idx, (input, target) in enumerate(val_loader):
-
 			input = input.float()
 			if opt.gpu is not None:
 				input = input.cuda(opt.gpu, non_blocking=True)
@@ -413,6 +418,9 @@ def validate(val_loader, model, classifier, criterion, opt):
 			feat_l, feat_ab = model(input, opt.layer)
 			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
 			output = classifier(feat)
+			##### This may be not necessary
+			target = target.long()
+			#####
 			loss = criterion(output, target)
 
 			# measure accuracy and record loss
@@ -451,7 +459,6 @@ def main():
 
 	# set the data loader
 	train_loader, val_loader = get_train_val_loader_b(args)
-
 	# set the model
 	model, classifier, criterion = set_model(args)
 
@@ -667,5 +674,5 @@ def main_cc():
 
 if __name__ == '__main__':
 	best_acc1 = 0
-	main()
+	main_cc() # change to this if you want to train based on LAb
 	# main_cc()
