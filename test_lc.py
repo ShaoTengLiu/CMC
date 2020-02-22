@@ -65,9 +65,6 @@ def parse_option():
 	parser.add_argument('--level', type=int, default=5, help='The level of corruption')
 	# path definition
 	parser.add_argument('--data_folder', type=str, default=None, help='path to data')
-	parser.add_argument('--save_path', type=str, default=None, help='path to save linear classifier')
-	parser.add_argument('--tb_path', type=str, default=None, help='path to tensorboard')
-
 	# data crop threshold
 	parser.add_argument('--crop_low', type=float, default=0.2, help='low area in crop')
 
@@ -78,9 +75,6 @@ def parse_option():
 	parser.add_argument('--gpu', default=None, type=int, help='GPU id to use.')
 
 	opt = parser.parse_args()
-
-	if (opt.data_folder is None) or (opt.save_path is None) or (opt.tb_path is None):
-		raise ValueError('one or more of the folders is None: data_folder | save_path | tb_path')
 
 	if opt.dataset == 'imagenet':
 		if 'alexnet' not in opt.model:
@@ -99,14 +93,6 @@ def parse_option():
 	opt.model_name = '{}_view_{}'.format(opt.model_name, opt.corruption)
 	# one may change this view into corruption to make the name more reasonable
 
-	opt.tb_folder = os.path.join(opt.tb_path, opt.model_name + '_layer{}'.format(opt.layer))
-	if not os.path.isdir(opt.tb_folder):
-		os.makedirs(opt.tb_folder)
-
-	opt.save_folder = os.path.join(opt.save_path, opt.model_name)
-	if not os.path.isdir(opt.save_folder):
-		os.makedirs(opt.save_folder)
-
 	if opt.dataset == 'imagenet100':
 		opt.n_label = 100
 	if opt.dataset == 'imagenet':
@@ -117,57 +103,6 @@ def parse_option():
 	return opt
 
 
-def get_train_val_loader(args):
-	train_folder = os.path.join(args.data_folder, 'train')
-	val_folder = os.path.join(args.data_folder, 'val')
-
-	if args.view == 'Lab':
-		mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
-		std = [(100 - 0) / 2, (86.183 + 98.233) / 2, (107.857 + 94.478) / 2]
-		color_transfer = RGB2Lab()
-	elif args.view == 'YCbCr':
-		mean = [116.151, 121.080, 132.342]
-		std = [109.500, 111.855, 111.964]
-		color_transfer = RGB2YCbCr()
-	else:
-		raise NotImplemented('view not implemented {}'.format(args.view))
-
-	normalize = transforms.Normalize(mean=mean, std=std)
-	train_dataset = datasets.ImageFolder(
-		train_folder,
-		transforms.Compose([
-			transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.0)),
-			transforms.RandomHorizontalFlip(),
-			color_transfer,
-			transforms.ToTensor(),
-			normalize,
-		])
-	)
-	val_dataset = datasets.ImageFolder(
-		val_folder,
-		transforms.Compose([
-			transforms.Resize(256),
-			transforms.CenterCrop(224),
-			color_transfer,
-			transforms.ToTensor(),
-			normalize,
-		])
-	)
-	print('number of train: {}'.format(len(train_dataset)))
-	print('number of val: {}'.format(len(val_dataset)))
-
-	train_sampler = None
-
-	train_loader = torch.utils.data.DataLoader(
-		train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-		num_workers=args.num_workers, pin_memory=True, sampler=train_sampler)
-
-	val_loader = torch.utils.data.DataLoader(
-		val_dataset, batch_size=args.batch_size, shuffle=False,
-		num_workers=args.num_workers, pin_memory=True)
-
-	return train_loader, val_loader, train_sampler
-def get_train_val_loader_cc(args):
 	"""get the train loader"""
 	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
 				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
@@ -213,30 +148,16 @@ def get_train_val_loader_cc(args):
 	teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size,
 											shuffle=True, num_workers=args.num_workers)
 	return trloader, teloader
-def get_train_val_loader_b(args):
+def get_val_loader(args):
 	"""get the train loader"""
 	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
 				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
 				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression','scale']
-	trsize = 50000
 	tesize = 10000
 	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-	tr_transforms = transforms.Compose([#transforms.RandomCrop(32, padding=4), # 32 -> 256
-										transforms.Resize(224),
-										transforms.RandomHorizontalFlip(),
-										transforms.ToTensor(),
-										transforms.Normalize(*NORM)])
 	te_transforms = transforms.Compose([transforms.Resize(224),
 										transforms.ToTensor(),
 										transforms.Normalize(*NORM)])
-
-	print('Train on %s' %(args.dataset))
-	trset_raw = np.load(args.data_folder + '/clean/train/images.npy')
-	trlabel_raw = np.load(args.data_folder + '/clean/train/labels.npy')
-	trset = datasets.CIFAR10(root=args.data_folder,
-			train=True, download=True, transform=tr_transforms)
-	trset.data = trset_raw
-	trset.targets = trlabel_raw
 
 	if args.corruption in common_corruptions:
 		# print('Train on %s level %d' %(args.corruption, args.level))
@@ -260,17 +181,19 @@ def get_train_val_loader_b(args):
 		raise Exception('Corruption not found!')
 
 	# train loader
-	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
-											shuffle=True, num_workers=args.num_workers)
 	teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size,
 											shuffle=True, num_workers=args.num_workers)
-	return trloader, teloader
+	return teloader
 # one can combine cc and b by letting corruption = views
 
 def set_model(args):
 	if args.model.startswith('alexnet'):
-		model = MyAlexNetCMC()
-		classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
+		if args.view == 'Lab':
+			model = MyAlexNetCMC()
+			classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
+		else:
+			model = MyAlexNetCMC_cc(corruption=args.view)
+			classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
 	elif args.model.startswith('resnet'):
 		model = MyResNetsCMC(args.model)
 		if args.model.endswith('v1'):
@@ -296,10 +219,7 @@ def set_model(args):
 
 	model.eval()
 
-	criterion = nn.CrossEntropyLoss().cuda(args.gpu)
-
-	return model, classifier, criterion
-def set_model_cc(args):
+	return model, classifier
 	if args.model.startswith('alexnet'):
 		model = MyAlexNetCMC_cc(corruption=args.view)
 		classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
@@ -332,83 +252,11 @@ def set_model_cc(args):
 
 	return model, classifier, criterion
 
-def set_optimizer(args, classifier):
-	optimizer = optim.SGD(classifier.parameters(),
-						  lr=args.learning_rate,
-						  momentum=args.momentum,
-						  weight_decay=args.weight_decay)
-	return optimizer
-
-
-def train(epoch, train_loader, model, classifier, criterion, optimizer, opt):
-	"""
-	one epoch training
-	"""
-	model.eval()
-	classifier.train()
-
-	batch_time = AverageMeter()
-	data_time = AverageMeter()
-	losses = AverageMeter()
-	top1 = AverageMeter()
-	top5 = AverageMeter()
-
-	end = time.time()
-	for idx, (input, target) in enumerate(train_loader):
-		# measure data loading time
-		data_time.update(time.time() - end)
-
-		input = input.float()
-		if opt.gpu is not None:
-			input = input.cuda(opt.gpu, non_blocking=True)
-		target = target.cuda(opt.gpu, non_blocking=True)
-
-		# ===================forward=====================
-		with torch.no_grad():
-			feat_l, feat_ab = model(input, opt.layer)
-			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
-
-		output = classifier(feat)
-		##### This may be not neccessary
-		target = target.long()
-		#####
-		loss = criterion(output, target)
-
-		acc1, acc5 = accuracy(output, target, topk=(1, 5))
-		losses.update(loss.item(), input.size(0))
-		top1.update(acc1[0], input.size(0))
-		top5.update(acc5[0], input.size(0))
-
-		# ===================backward=====================
-		optimizer.zero_grad()
-		loss.backward()
-		optimizer.step()
-
-		# ===================meters=====================
-		batch_time.update(time.time() - end)
-		end = time.time()
-
-		# print info
-		if idx % opt.print_freq == 0:
-			print('Epoch: [{0}][{1}/{2}]\t'
-				  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-				  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-				  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-				  'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-				  'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-				   epoch, idx, len(train_loader), batch_time=batch_time,
-				   data_time=data_time, loss=losses, top1=top1, top5=top5))
-			sys.stdout.flush()
-
-	return top1.avg, top5.avg, losses.avg
-
-
-def validate(val_loader, model, classifier, criterion, opt):
+def validate(val_loader, model, classifier, opt):
 	"""
 	evaluation
 	"""
 	batch_time = AverageMeter()
-	losses = AverageMeter()
 	top1 = AverageMeter()
 	top5 = AverageMeter()
 
@@ -430,12 +278,9 @@ def validate(val_loader, model, classifier, criterion, opt):
 			output = classifier(feat)
 			##### This may be not necessary
 			target = target.long()
-			#####
-			loss = criterion(output, target)
 
 			# measure accuracy and record loss
 			acc1, acc5 = accuracy(output, target, topk=(1, 5))
-			losses.update(loss.item(), input.size(0))
 			top1.update(acc1[0], input.size(0))
 			top5.update(acc5[0], input.size(0))
 
@@ -443,19 +288,18 @@ def validate(val_loader, model, classifier, criterion, opt):
 			batch_time.update(time.time() - end)
 			end = time.time()
 
-			if idx % opt.print_freq == 0:
-				print('Test: [{0}/{1}]\t'
-					  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-					  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-					  'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-					  'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-					   idx, len(val_loader), batch_time=batch_time, loss=losses,
-					   top1=top1, top5=top5))
+			# if idx % opt.print_freq == 0:
+			# 	print('Test: [{0}/{1}]\t'
+			# 		  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+			# 		  'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+			# 		  'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+			# 		   idx, len(val_loader), batch_time=batch_time,
+			# 		   top1=top1, top5=top5))
 
 		print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
 			  .format(top1=top1, top5=top5))
 
-	return top1.avg, top5.avg, losses.avg
+	return top1.avg, top5.avg
 
 
 def main():
@@ -468,12 +312,9 @@ def main():
 		print("Use GPU: {} for training".format(args.gpu))
 
 	# set the data loader
-	train_loader, val_loader = get_train_val_loader_b(args)
+	val_loader = get_val_loader(args)
 	# set the model
-	model, classifier, criterion = set_model(args)
-
-	# set optimizer
-	optimizer = set_optimizer(args, classifier)
+	model, classifier = set_model(args)
 
 	cudnn.benchmark = True
 
@@ -482,90 +323,17 @@ def main():
 	if args.resume:
 		if os.path.isfile(args.resume):
 			print("=> loading checkpoint '{}'".format(args.resume))
-			checkpoint = torch.load(args.resume)
-			args.start_epoch = checkpoint['epoch'] + 1
-			best_acc1 = checkpoint['best_acc1']
-			if args.gpu is not None:
-				# best_acc1 may be from a checkpoint from a different GPU
-				best_acc1 = best_acc1.to(args.gpu)
-			classifier.load_state_dict(checkpoint['classifier'])
-			optimizer.load_state_dict(checkpoint['optimizer'])
-			print("=> loaded checkpoint '{}' (epoch {})"
-				  .format(args.resume, checkpoint['epoch']))
-		else:
-			print("=> no checkpoint found at '{}'".format(args.resume))
-
-	args.start_epoch = 1
-	if args.resume:
-		if os.path.isfile(args.resume):
-			print("=> loading checkpoint '{}'".format(args.resume))
 			checkpoint = torch.load(args.resume, map_location='cpu')
-			args.start_epoch = checkpoint['epoch'] + 1
 			classifier.load_state_dict(checkpoint['classifier'])
-			optimizer.load_state_dict(checkpoint['optimizer'])
-			best_acc1 = checkpoint['best_acc1']
-			best_acc1 = best_acc1.cuda()
-			print("=> loaded checkpoint '{}' (epoch {})"
-				  .format(args.resume, checkpoint['epoch']))
 			del checkpoint
 			torch.cuda.empty_cache()
 		else:
 			print("=> no checkpoint found at '{}'".format(args.resume))
 
-	# tensorboard
-	logger = tb_logger.Logger(logdir=args.tb_folder, flush_secs=2)
-
 	# routine
 	for epoch in range(args.start_epoch, args.epochs + 1):
-
-		adjust_learning_rate(epoch, args, optimizer)
-		print("==> training...")
-
-		time1 = time.time()
-		train_acc, train_acc5, train_loss = train(epoch, train_loader, model, classifier, criterion, optimizer, args)
-		time2 = time.time()
-		print('train epoch {}, total time {:.2f}'.format(epoch, time2 - time1))
-
-		logger.log_value('train_acc', train_acc, epoch)
-		logger.log_value('train_acc5', train_acc5, epoch)
-		logger.log_value('train_loss', train_loss, epoch)
-
 		print("==> testing...")
-		test_acc, test_acc5, test_loss = validate(val_loader, model, classifier, criterion, args)
-
-		logger.log_value('test_acc', test_acc, epoch)
-		logger.log_value('test_acc5', test_acc5, epoch)
-		logger.log_value('test_loss', test_loss, epoch)
-
-		# save the best model
-		if test_acc > best_acc1:
-			best_acc1 = test_acc
-			state = {
-				'opt': args,
-				'epoch': epoch,
-				'classifier': classifier.state_dict(),
-				'best_acc1': best_acc1,
-				'optimizer': optimizer.state_dict(),
-			}
-			save_name = '{}_layer{}.pth'.format(args.model, args.layer)
-			save_name = os.path.join(args.save_folder, save_name)
-			print('saving best model!')
-			torch.save(state, save_name)
-
-		# save model
-		if epoch % args.save_freq == 0:
-			print('==> Saving...')
-			state = {
-				'opt': args,
-				'epoch': epoch,
-				'classifier': classifier.state_dict(),
-				'best_acc1': test_acc,
-				'optimizer': optimizer.state_dict(),
-			}
-			save_name = 'ckpt_epoch_{epoch}.pth'.format(epoch=epoch)
-			save_name = os.path.join(args.save_folder, save_name)
-			print('saving regular model!')
-			torch.save(state, save_name)
+		test_acc, test_acc5 = validate(val_loader, model, classifier, args)
 
 		# tensorboard logger
 		pass
@@ -684,5 +452,5 @@ def main_cc():
 
 if __name__ == '__main__':
 	best_acc1 = 0
-	main_cc() # change to this if you want to train based on LAb
+	main() # change to this if you want to train based on LAb
 	# main_cc()

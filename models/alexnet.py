@@ -3,6 +3,7 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 from corruption import C_list
+import numpy as np
 
 class MyAlexNetCMC(nn.Module):
 	def __init__(self, feat_dim=128):
@@ -53,8 +54,7 @@ class MyAlexNetCMC_cc(nn.Module):
 		self.encoder = nn.DataParallel(self.encoder)
 
 	def forward(self, x, layer=8):
-		return self.encoder(x, layer)
-		
+		return self.encoder(x, layer)	
 class alexnet_cc(nn.Module):
 	def __init__(self, feat_dim=128, corruption='original'):
 		super(alexnet_cc, self).__init__()
@@ -67,7 +67,14 @@ class alexnet_cc(nn.Module):
 		#####
 		l = x.float().cuda()
 		# ab = torch.from_numpy(C_list()[self.corruption](x)).float().cuda()
-		ab = torch.from_numpy(C_list()[self.corruption](x.cpu().detach().numpy())).float().cuda()
+		# print(x.size())
+		x_np = x.cpu().detach().numpy()
+		x_np_tran = []
+		for i in range(x_np.shape[0]):
+			# x_np[i] = C_list()[self.corruption](x_np[i].transpose(1, 2, 0)).transpose(2, 0, 1)
+			x_np_tran.append( C_list()[self.corruption](x_np[i].transpose(1, 2, 0)).transpose(2, 0, 1) )
+		x_np_tran = np.array(x_np_tran)
+		ab = torch.from_numpy(x_np_tran).float().cuda()
 		##### This is strange
 		feat_l = self.l_to_ab(l, layer)
 		feat_ab = self.ab_to_l(ab, layer)
@@ -80,13 +87,15 @@ class alexnet_half(nn.Module):
 			nn.Conv2d(in_channel, 96//2, 11, 4, 2, bias=False),
 			nn.BatchNorm2d(96//2),
 			nn.ReLU(inplace=True),
-			nn.MaxPool2d(3, 2),
+			# nn.MaxPool2d(3, 2),
+			nn.AdaptiveMaxPool2d(27),
 		)
 		self.conv_block_2 = nn.Sequential(
 			nn.Conv2d(96//2, 256//2, 5, 1, 2, bias=False),
 			nn.BatchNorm2d(256//2),
 			nn.ReLU(inplace=True),
-			nn.MaxPool2d(3, 2),
+			# nn.MaxPool2d(3, 2),
+			nn.AdaptiveMaxPool2d(13),
 		)
 		self.conv_block_3 = nn.Sequential(
 			nn.Conv2d(256//2, 384//2, 3, 1, 1, bias=False),
@@ -102,7 +111,8 @@ class alexnet_half(nn.Module):
 			nn.Conv2d(384//2, 256//2, 3, 1, 1, bias=False),
 			nn.BatchNorm2d(256//2),
 			nn.ReLU(inplace=True),
-			nn.MaxPool2d(3, 2),
+			# nn.MaxPool2d(3, 2),
+			nn.AdaptiveMaxPool2d(6),
 		)
 		self.fc6 = nn.Sequential(
 			nn.Linear(256 * 6 * 6 // 2, 4096 // 2),
@@ -122,7 +132,6 @@ class alexnet_half(nn.Module):
 	def forward(self, x, layer):
 		if layer <= 0:
 			return x
-		
 		x = self.conv_block_1(x)
 		if layer == 1:
 			return x
@@ -148,7 +157,6 @@ class alexnet_half(nn.Module):
 		x = self.fc8(x)
 		x = self.l2norm(x)
 		return x
-
 
 class Normalize(nn.Module):
 

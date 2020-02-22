@@ -28,6 +28,7 @@ from NCE.NCECriterion import NCESoftmaxLoss
 from dataset import ImageFolderInstance
 #####
 import numpy as np
+from Resizer import resizer
 #####
 
 try:
@@ -40,7 +41,7 @@ TODO: python 3.6 ModuleNotFoundError
 
 common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
 				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
-				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression', 'scale']
 
 
 def parse_option():
@@ -211,10 +212,10 @@ def get_train_loader_cc(args):
 	if args.view in common_corruptions:
 		# print('Train on %s level %d' %(args.corruption, args.level))
 		print('Train on %s' %(args.view))
-		trset_raw = np.load(args.data_folder + 'clean/train/images.npy')
+		# trset_raw = np.load(args.data_folder + 'clean/train/images.npy')
 		trset = datasets.CIFAR10(root=args.data_folder,
 				train=True, download=True, transform=tr_transforms)
-		trset.data = trset_raw
+		# trset.data = trset_raw
 	else:
 		raise Exception('Corruption not found!')
 

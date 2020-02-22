@@ -28,6 +28,8 @@ from scipy.ndimage import zoom as scizoom
 from scipy.ndimage.interpolation import map_coordinates
 import warnings
 
+from Resizer import resizer
+
 warnings.simplefilter("ignore", UserWarning)
 
 
@@ -372,9 +374,9 @@ def jpeg_compression(x, severity=1):
 
 def pixelate(x, severity=1):
     c = [0.95, 0.9, 0.85, 0.75, 0.65][severity - 1]
-
-    x = x.resize((int(32 * c), int(32 * c)), PILImage.BOX)
-    x = x.resize((32, 32), PILImage.BOX)
+    size = 224
+    x = x.resize((int(size * c), int(size * c)), PILImage.BOX)
+    x = x.resize((size, size), PILImage.BOX)
 
     return x
 
@@ -412,6 +414,20 @@ def elastic_transform(image, severity=1):
     indices = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1)), np.reshape(z, (-1, 1))
     return np.clip(map_coordinates(image, indices, order=1, mode='reflect').reshape(shape), 0, 1) * 255
 
+def scale(image, severity=5):
+    
+    # return np.uint8( resizer.imresize(image, scale_factor=0.2*severity) )
+    # return np.uint8( resizer.imresize(image, scale_factor=0.9375) )
+    # return np.uint8( resizer.imresize(image, output_shape=(32, 32, 3)) )
+    # if severity < 5: # 把 32(groun truth)避开
+    #     des_size = 16 + 4 * (severity - 1) # 16 is the smallest size
+    # else:
+    #     des_size = 16 + 4 * (severity)
+    # return np.uint8( resizer.imresize(image, scale_factor=des_size/32, output_shape=(des_size, des_size, 3)) )
+    ori_size = 224
+    stride = 16
+    des_size = ori_size + stride * severity
+    return np.uint8( resizer.imresize(image, scale_factor=des_size/ori_size, output_shape=(des_size, des_size, 3)) )
 
 # /////////////// End Distortions ///////////////
 
@@ -440,6 +456,7 @@ def C_list():
     d['spatter'] = spatter
     d['saturate'] = saturate
     d['original'] = lambda x:x
+    d['scale'] = scale ###
     return d
 
 # source_path = './cifarpy'
