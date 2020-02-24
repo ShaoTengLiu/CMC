@@ -232,7 +232,8 @@ def fog(x, severity=1):
 
     x = np.array(x) / 255.
     max_val = x.max()
-    x += c[0] * plasma_fractal(wibbledecay=c[1])[:32, :32][..., np.newaxis]
+    size = 224
+    x += c[0] * plasma_fractal(mapsize=size,wibbledecay=c[1])[:size, :size][..., np.newaxis]
     return np.clip(x * max_val / (max_val + c[0]), 0, 1) * 255
 
 
@@ -425,7 +426,7 @@ def scale(image, severity=5):
     #     des_size = 16 + 4 * (severity)
     # return np.uint8( resizer.imresize(image, scale_factor=des_size/32, output_shape=(des_size, des_size, 3)) )
     ori_size = 224
-    stride = 16
+    stride = ori_size // 2
     des_size = ori_size + stride * severity
     return np.uint8( resizer.imresize(image, scale_factor=des_size/ori_size, output_shape=(des_size, des_size, 3)) )
 

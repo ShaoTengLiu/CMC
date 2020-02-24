@@ -152,12 +152,19 @@ def get_val_loader(args):
 	"""get the train loader"""
 	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
 				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
-				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression','scale']
+				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
 	tesize = 10000
 	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-	te_transforms = transforms.Compose([transforms.Resize(224),
-										transforms.ToTensor(),
-										transforms.Normalize(*NORM)])
+	if args.corruption == 'scale':
+		te_transforms = transforms.Compose([transforms.Resize(224*(1 + args.level//2)),
+											transforms.ToTensor(),
+											transforms.Normalize(*NORM)])
+	else:
+		te_transforms = transforms.Compose([transforms.Resize(224),
+									transforms.ToTensor(),
+									transforms.Normalize(*NORM)])
+	# te_transforms = transforms.Compose([transforms.ToTensor(),
+	# 								transforms.Normalize(*NORM)])
 
 	if args.corruption in common_corruptions:
 		# print('Train on %s level %d' %(args.corruption, args.level))
@@ -165,16 +172,17 @@ def get_val_loader(args):
 		# teset_raw = np.load(args.data_folder + '/clean/val/images.npy') # use these two if you want to test on clean data
 		# telabel_raw = np.load(args.data_folder + '/clean/val/labels.npy')
 		# teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
-		if args.corruption == 'scale':
-			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/upsample_%s_images.npy' %(str(args.level)))
-		else:
-			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s.npy' %(args.corruption))[(args.level-1)*tesize: args.level*tesize]
+		
+		# if args.corruption == 'scale':
+		# 	teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/upsample_%s_images.npy' %(str(args.level)))
+		# else:
+		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s.npy' %(args.corruption))[(args.level-1)*tesize: args.level*tesize]
 		telabel_raw = np.load(args.data_folder + 'CIFAR-10-C-trainval/val/labels.npy')[(args.level-1)*tesize: args.level*tesize]
 		teset = datasets.CIFAR10(root=args.data_folder,
 				train=False, download=True, transform=te_transforms)
 		teset.data = teset_raw
 		teset.targets = telabel_raw
-	elif args.corruption == 'original':
+	elif args.corruption == 'original' or args.corruption == 'scale':
 		teset = datasets.CIFAR10(root=args.data_folder,
 				train=False, download=True, transform=te_transforms)
 	else:
@@ -271,7 +279,6 @@ def validate(val_loader, model, classifier, opt):
 			if opt.gpu is not None:
 				input = input.cuda(opt.gpu, non_blocking=True)
 			target = target.cuda(opt.gpu, non_blocking=True)
-
 			# compute output
 			feat_l, feat_ab = model(input, opt.layer)
 			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)

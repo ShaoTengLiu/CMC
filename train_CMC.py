@@ -39,6 +39,8 @@ except ImportError:
 TODO: python 3.6 ModuleNotFoundError
 """
 
+# torch.backends.cudnn.enabled = False
+
 common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
 				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
 				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression', 'scale']
@@ -786,7 +788,7 @@ def main_cc():
 		torch.cuda.empty_cache()
 
 if __name__ == '__main__':
-	main_cc()
+	main()
 	# main()
 
 # Readme
