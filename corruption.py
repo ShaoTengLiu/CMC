@@ -443,19 +443,11 @@ def elastic_transform(image, severity=1):
     return np.clip(map_coordinates(image, indices, order=1, mode='reflect').reshape(shape), 0, 1) * 255
 
 def scale(image, severity=5):
-    
-    # return np.uint8( resizer.imresize(image, scale_factor=0.2*severity) )
-    # return np.uint8( resizer.imresize(image, scale_factor=0.9375) )
-    # return np.uint8( resizer.imresize(image, output_shape=(32, 32, 3)) )
-    # if severity < 5: # 把 32(groun truth)避开
-    #     des_size = 16 + 4 * (severity - 1) # 16 is the smallest size
-    # else:
-    #     des_size = 16 + 4 * (severity)
-    # return np.uint8( resizer.imresize(image, scale_factor=des_size/32, output_shape=(des_size, des_size, 3)) )
     ori_size = 32
     stride = ori_size // 2
     des_size = ori_size + stride * severity
     return np.uint8( resizer.imresize(np.array(image), scale_factor=des_size/ori_size, output_shape=(des_size, des_size, 3)) )
+    # return np.uint8( resizer.imresize(image, scale_factor=des_size/ori_size, output_shape=(des_size, des_size, 3)) )
 
 def various_noise(image, i, severity=5):
     if i%3 == 0:

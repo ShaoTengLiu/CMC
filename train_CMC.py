@@ -87,9 +87,8 @@ def parse_option():
 	parser.add_argument('--tb_path', type=str, default=None, help='path to tensorboard')
 
 	# add new views
-	# parser.add_argument('--view', type=str, default='Lab', choices=['Lab', 'YCbCr'])
 	parser.add_argument('--view', type=str, default='Lab')
-	parser.add_argument('--level', type=str, default='5')
+	parser.add_argument('--level', type=int, default='5')
 
 	# mixed precision setting
 	parser.add_argument('--amp', action='store_true', help='using mixed precision')
@@ -120,7 +119,7 @@ def parse_option():
 
 	opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
 	if opt.view in common_corruptions:
-		opt.model_name = '{}_level_{}'.format(opt.model_name, opt.level)
+		opt.model_name = '{}_level_{}'.format(opt.model_name, str(opt.level))
 
 	opt.model_folder = os.path.join(opt.model_path, opt.model_name)
 	if not os.path.isdir(opt.model_folder):
@@ -135,11 +134,8 @@ def parse_option():
 
 	return opt
 
-
 def get_train_loader(args):
 	"""get the train loader"""
-	data_folder = os.path.join(args.data_folder, 'train')
-
 	if args.view == 'Lab' or args.view == 'YCbCr':
 		if args.view == 'Lab':
 			mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
@@ -151,7 +147,6 @@ def get_train_loader(args):
 			color_transfer = RGB2YCbCr()
 		normalize = transforms.Normalize(mean=mean, std=std)
 		train_transform = transforms.Compose([
-			# transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.)), # 224 -> 32
 			transforms.RandomCrop(32, padding=4), # maybe not necessary
 			transforms.RandomHorizontalFlip(),
 			color_transfer,
@@ -159,13 +154,14 @@ def get_train_loader(args):
 			normalize,
 		])
 	else:
-		print('Use RGB images with %s!' %(args.view))
+		print('Use RGB images with %s level %s!' %(args.view, str(args.level)))
 		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 		normalize = transforms.Normalize(*NORM)
-		color_transfer = RGB()
-
 		train_transform = transforms.Compose([
-			transforms.ToTensor()
+			transforms.RandomCrop(32, padding=4), # maybe not necessary
+			transforms.RandomHorizontalFlip(),
+			transforms.ToTensor(),
+			normalize,
 		])
 	
 	train_dataset = datasets.CIFAR10(root=args.data_folder,
@@ -183,95 +179,12 @@ def get_train_loader(args):
 
 	return train_loader, n_data
 
-def get_train_loader_c(args):
-	"""get the train loader"""
-	trsize = 50000
-	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-	tr_transforms = transforms.Compose([transforms.RandomCrop(32, padding=4),
-										transforms.RandomHorizontalFlip(),
-										transforms.ToTensor(),
-										transforms.Normalize(*NORM)])
-	if args.view in common_corruptions:
-		# print('Train on %s level %d' %(args.corruption, args.level))
-		print('Train on %s' %(args.view))
-		trset_raw_a = np.load(args.data_folder + 'clean/train/images.npy')
-		trset_raw_b = np.load(args.data_folder + 'CIFAR-10-C-trainval/train/%s_4_images.npy' %(args.view))
-		# trset_raw_b = trset_raw_b[(args.level-1)*trsize: args.level*trsize]
-		trset_raw = np.concatenate((trset_raw_a, trset_raw_b), axis=0)
-		trset = datasets.CIFAR10(root=args.data_folder,
-				train=True, download=True, transform=tr_transforms)
-		trset.data = trset_raw
-	else:
-		raise Exception('Corruption not found!')
-
-	# train loader
-	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
-											shuffle=True, num_workers=args.num_workers)
-	# num of samples
-	n_data = len(trset)
-	print('number of samples: {}'.format(n_data))
-
-	return trloader,  n_data
-def get_train_loader_cc(args):
-	"""get the train loader"""
-	trsize = 50000
-	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-	tr_transforms = transforms.Compose([#transforms.RandomCrop(32, padding=4), # 32 -> 256
-										transforms.Resize(224),
-										transforms.RandomHorizontalFlip(),
-										transforms.ToTensor(),
-										transforms.Normalize(*NORM)])
-										
-	if args.view in common_corruptions:
-		# print('Train on %s level %d' %(args.corruption, args.level))
-		print('Train on %s' %(args.view))
-		# trset_raw = np.load(args.data_folder + 'clean/train/images.npy')
-		trset = datasets.CIFAR10(root=args.data_folder,
-				train=True, download=True, transform=tr_transforms)
-		# trset.data = trset_raw
-	else:
-		raise Exception('Corruption not found!')
-
-	# train loader
-	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
-											shuffle=True, num_workers=args.num_workers)
-	# num of samples
-	n_data = len(trset)
-	print('number of samples: {}'.format(n_data))
-
-	return trloader,  n_data
-def get_train_loader_b(args):
-	"""get the train loader"""
-	trsize = 50000
-	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-	tr_transforms = transforms.Compose([# transforms.RandomCrop(32, padding=4),
-										transforms.Resize(224),
-										transforms.RandomHorizontalFlip(),
-										transforms.ToTensor(),
-										transforms.Normalize(*NORM)])
-										
-	# print('Train on %s level %d' %(args.corruption, args.level))
-	print('Train on %s' %(args.view))
-	trset_raw = np.load(args.data_folder + 'clean/train/images.npy')
-	trset = datasets.CIFAR10(root=args.data_folder,
-			train=True, download=True, transform=tr_transforms)
-	trset.data = trset_raw
-
-	# train loader
-	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
-											shuffle=True, num_workers=args.num_workers)
-	# num of samples
-	n_data = len(trset)
-	print('number of samples: {}'.format(n_data))
-
-	return trloader,  n_data
-
 def set_model(args, n_data):
 	# set the model
 	if args.model == 'alexnet':
 		model = MyAlexNetCMC(args.feat_dim)
-	elif args.model.startswith('resnet'):
-		model = MyResNetsCMC(args.model, args.view)
+	elif args.model.startswith('resnet'): # use this commonly
+		model = MyResNetsCMC(args.model, args.view, args.level)
 	else:
 		raise ValueError('model not supported yet {}'.format(args.model))
 
@@ -287,48 +200,6 @@ def set_model(args, n_data):
 		cudnn.benchmark = True
 
 	return model, contrast, criterion_ab, criterion_l
-def set_model_c(args, n_data):
-	# set the model
-	if args.model == 'alexnet':
-		model = MyAlexNetCMC_c(args.feat_dim)
-	elif args.model.startswith('resnet'):
-		model = MyResNetsCMC(args.model)
-	else:
-		raise ValueError('model not supported yet {}'.format(args.model))
-
-	contrast = NCEAverage(args.feat_dim, n_data, args.nce_k, args.nce_t, args.nce_m, args.softmax)
-	criterion_b = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
-	criterion_a = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
-
-	if torch.cuda.is_available():
-		model = model.cuda()
-		contrast = contrast.cuda()
-		criterion_b = criterion_b.cuda()
-		criterion_a = criterion_a.cuda()
-		cudnn.benchmark = True
-
-	return model, contrast, criterion_b, criterion_a
-def set_model_cc(args, n_data):
-	# set the model
-	if args.model == 'alexnet':
-		model = MyAlexNetCMC_cc(args.feat_dim, args.view)
-	elif args.model.startswith('resnet'):
-		model = MyResNetsCMC(args.model)
-	else:
-		raise ValueError('model not supported yet {}'.format(args.model))
-
-	contrast = NCEAverage(args.feat_dim, n_data, args.nce_k, args.nce_t, args.nce_m, args.softmax)
-	criterion_b = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
-	criterion_a = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
-
-	if torch.cuda.is_available():
-		model = model.cuda()
-		contrast = contrast.cuda()
-		criterion_b = criterion_b.cuda()
-		criterion_a = criterion_a.cuda()
-		cudnn.benchmark = True
-
-	return model, contrast, criterion_b, criterion_a
 
 def set_optimizer(args, model):
 	# return optimizer
@@ -337,7 +208,6 @@ def set_optimizer(args, model):
 								momentum=args.momentum,
 								weight_decay=args.weight_decay)
 	return optimizer
-
 
 def train(epoch, train_loader, model, contrast, criterion_l, criterion_ab, optimizer, opt):
 	"""
@@ -411,157 +281,6 @@ def train(epoch, train_loader, model, contrast, criterion_l, criterion_ab, optim
 			sys.stdout.flush()
 
 	return l_loss_meter.avg, l_prob_meter.avg, ab_loss_meter.avg, ab_prob_meter.avg
-def train_c(epoch, train_loader, model, contrast, criterion_a, criterion_b, optimizer, opt):
-	"""
-	one epoch training
-	"""
-	model.train()
-	contrast.train()
-
-	batch_time = AverageMeter()
-	data_time = AverageMeter()
-	losses = AverageMeter()
-	a_loss_meter = AverageMeter()
-	b_loss_meter = AverageMeter()
-	a_prob_meter = AverageMeter()
-	b_prob_meter = AverageMeter()
-
-	end = time.time()
-	# for idx, (inputs, _, index) in enumerate(train_loader):
-	for idx, (inputs, index) in enumerate(train_loader):
-		data_time.update(time.time() - end)
-
-		bsz = inputs.size(0)
-		inputs = inputs.float()
-
-		input_a, input_b = torch.chunk(inputs, 2)
-
-		if torch.cuda.is_available():
-			# index = index.cuda(async=True) # delete this temp
-			index = index.cuda()
-			# inputs = inputs.cuda()
-			input_a = input_a.cuda()
-			input_b = input_b.cuda()
-
-		# ===================forward=====================
-		feat_a, feat_b = model(input_a, input_b)
-		out_a, out_b = contrast(feat_a, feat_b, index)
-
-		a_loss = criterion_a(out_a)
-		b_loss = criterion_b(out_b)
-		a_prob = out_a[:, 0].mean()
-		b_prob = out_b[:, 0].mean()
-
-		loss = a_loss + b_loss
-
-		# ===================backward=====================
-		optimizer.zero_grad()
-		if opt.amp:
-			with amp.scale_loss(loss, optimizer) as scaled_loss:
-				scaled_loss.backward()
-		else:
-			loss.backward()
-		optimizer.step()
-
-		# ===================meters=====================
-		losses.update(loss.item(), bsz)
-		a_loss_meter.update(a_loss.item(), bsz)
-		a_prob_meter.update(a_prob.item(), bsz)
-		b_loss_meter.update(b_loss.item(), bsz)
-		b_prob_meter.update(b_prob.item(), bsz)
-
-		torch.cuda.synchronize()
-		batch_time.update(time.time() - end)
-		end = time.time()
-
-		# print info
-		if (idx + 1) % opt.print_freq == 0:
-			print('Train: [{0}][{1}/{2}]\t'
-				  'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-				  'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
-				  'loss {loss.val:.3f} ({loss.avg:.3f})\t'
-				  'a_p {aprobs.val:.3f} ({aprobs.avg:.3f})\t'
-				  'b_p {bprobs.val:.3f} ({bprobs.avg:.3f})'.format(
-				   epoch, idx + 1, len(train_loader), batch_time=batch_time,
-				   data_time=data_time, loss=losses, lprobs=a_prob_meter,
-				   abprobs=b_prob_meter))
-			print(out_a.shape)
-			sys.stdout.flush()
-
-	return a_loss_meter.avg, a_prob_meter.avg, b_loss_meter.avg, b_prob_meter.avg
-def train_cc(epoch, train_loader, model, contrast, criterion_l, criterion_ab, optimizer, opt):
-	"""
-	one epoch training
-	"""
-	model.train()
-	contrast.train()
-
-	batch_time = AverageMeter()
-	data_time = AverageMeter()
-	losses = AverageMeter()
-	l_loss_meter = AverageMeter()
-	ab_loss_meter = AverageMeter()
-	l_prob_meter = AverageMeter()
-	ab_prob_meter = AverageMeter()
-
-	end = time.time()
-	# for idx, (inputs, _, index) in enumerate(train_loader): change this temp
-	for idx, (inputs, index) in enumerate(train_loader):
-		data_time.update(time.time() - end)
-
-		bsz = inputs.size(0)
-		inputs = inputs.float()
-		if torch.cuda.is_available():
-			# index = index.cuda(async=True) # delete this temp
-			index = index.cuda()
-			inputs = inputs.cuda()
-
-		# ===================forward=====================
-		feat_l, feat_ab = model(inputs)
-		out_l, out_ab = contrast(feat_l, feat_ab, index)
-
-		l_loss = criterion_l(out_l)
-		ab_loss = criterion_ab(out_ab)
-		l_prob = out_l[:, 0].mean()
-		ab_prob = out_ab[:, 0].mean()
-
-		loss = l_loss + ab_loss
-
-		# ===================backward=====================
-		optimizer.zero_grad()
-		if opt.amp:
-			with amp.scale_loss(loss, optimizer) as scaled_loss:
-				scaled_loss.backward()
-		else:
-			loss.backward()
-		optimizer.step()
-
-		# ===================meters=====================
-		losses.update(loss.item(), bsz)
-		l_loss_meter.update(l_loss.item(), bsz)
-		l_prob_meter.update(l_prob.item(), bsz)
-		ab_loss_meter.update(ab_loss.item(), bsz)
-		ab_prob_meter.update(ab_prob.item(), bsz)
-
-		torch.cuda.synchronize()
-		batch_time.update(time.time() - end)
-		end = time.time()
-
-		# print info
-		if (idx + 1) % opt.print_freq == 0:
-			print('Train: [{0}][{1}/{2}]\t'
-				  'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-				  'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'
-				  'loss {loss.val:.3f} ({loss.avg:.3f})\t'
-				  'l_p {lprobs.val:.3f} ({lprobs.avg:.3f})\t'
-				  'ab_p {abprobs.val:.3f} ({abprobs.avg:.3f})'.format(
-				   epoch, idx + 1, len(train_loader), batch_time=batch_time,
-				   data_time=data_time, loss=losses, lprobs=l_prob_meter,
-				   abprobs=ab_prob_meter))
-			print(out_l.shape)
-			sys.stdout.flush()
-
-	return l_loss_meter.avg, l_prob_meter.avg, ab_loss_meter.avg, ab_prob_meter.avg
 
 def main():
 
@@ -569,7 +288,6 @@ def main():
 	args = parse_option()
 
 	# set the loader
-	# train_loader, n_data = get_train_loader(args)
 	train_loader, n_data = get_train_loader(args) # change to this if testing on cifar as baseline
 
 	# set the model
@@ -641,167 +359,7 @@ def main():
 			del state
 
 		torch.cuda.empty_cache()
-def main_c():
 
-	# parse the args
-	args = parse_option()
-
-	# set the loader
-	train_loader, n_data = get_train_loader_c(args)
-
-	# set the model
-	model, contrast, criterion_ab, criterion_l = set_model_c(args, n_data)
-	# here, l is the original img and ab is the image with corruption
-
-	# set the optimizer
-	optimizer = set_optimizer(args, model)
-
-	# set mixed precision
-	if args.amp:
-		model, optimizer = amp.initialize(model, optimizer, opt_level=args.opt_level)
-
-	# optionally resume from a checkpoint
-	args.start_epoch = 1
-	if args.resume:
-		if os.path.isfile(args.resume):
-			print("=> loading checkpoint '{}'".format(args.resume))
-			checkpoint = torch.load(args.resume, map_location='cpu')
-			args.start_epoch = checkpoint['epoch'] + 1
-			model.load_state_dict(checkpoint['model'])
-			optimizer.load_state_dict(checkpoint['optimizer'])
-			contrast.load_state_dict(checkpoint['contrast'])
-			if args.amp and checkpoint['opt'].amp:
-				print('==> resuming amp state_dict')
-				amp.load_state_dict(checkpoint['amp'])
-			print("=> loaded checkpoint '{}' (epoch {})"
-				  .format(args.resume, checkpoint['epoch']))
-			del checkpoint
-			torch.cuda.empty_cache()
-		else:
-			print("=> no checkpoint found at '{}'".format(args.resume))
-
-	# tensorboard
-	logger = tb_logger.Logger(logdir=args.tb_folder, flush_secs=2)
-
-	# routine
-	for epoch in range(args.start_epoch, args.epochs + 1):
-
-		adjust_learning_rate(epoch, args, optimizer)
-		print("==> training...")
-
-		time1 = time.time()
-		l_loss, l_prob, ab_loss, ab_prob = train_c(epoch, train_loader, model, contrast, criterion_l, criterion_ab,
-												 optimizer, args)
-		time2 = time.time()
-		print('epoch {}, total time {:.2f}'.format(epoch, time2 - time1))
-
-		# tensorboard logger
-		logger.log_value('l_loss', l_loss, epoch)
-		logger.log_value('l_prob', l_prob, epoch)
-		logger.log_value('ab_loss', ab_loss, epoch)
-		logger.log_value('ab_prob', ab_prob, epoch)
-
-		# save model
-		if epoch % args.save_freq == 0:
-			print('==> Saving...')
-			state = {
-				'opt': args,
-				'model': model.state_dict(),
-				'contrast': contrast.state_dict(),
-				'optimizer': optimizer.state_dict(),
-				'epoch': epoch,
-			}
-			if args.amp:
-				state['amp'] = amp.state_dict()
-			save_file = os.path.join(args.model_folder, 'ckpt_epoch_{epoch}.pth'.format(epoch=epoch))
-			torch.save(state, save_file)
-			# help release GPU memory
-			del state
-
-		torch.cuda.empty_cache()
-def main_cc():
-
-	# parse the args
-	args = parse_option()
-
-	# set the loader
-	train_loader, n_data = get_train_loader_cc(args)
-
-	# set the model
-	model, contrast, criterion_ab, criterion_l = set_model_cc(args, n_data)
-
-	# set the optimizer
-	optimizer = set_optimizer(args, model)
-
-	# set mixed precision
-	if args.amp:
-		model, optimizer = amp.initialize(model, optimizer, opt_level=args.opt_level)
-
-	# optionally resume from a checkpoint
-	args.start_epoch = 1
-	if args.resume:
-		if os.path.isfile(args.resume):
-			print("=> loading checkpoint '{}'".format(args.resume))
-			checkpoint = torch.load(args.resume, map_location='cpu')
-			args.start_epoch = checkpoint['epoch'] + 1
-			model.load_state_dict(checkpoint['model'])
-			optimizer.load_state_dict(checkpoint['optimizer'])
-			contrast.load_state_dict(checkpoint['contrast'])
-			if args.amp and checkpoint['opt'].amp:
-				print('==> resuming amp state_dict')
-				amp.load_state_dict(checkpoint['amp'])
-			print("=> loaded checkpoint '{}' (epoch {})"
-				  .format(args.resume, checkpoint['epoch']))
-			del checkpoint
-			torch.cuda.empty_cache()
-		else:
-			print("=> no checkpoint found at '{}'".format(args.resume))
-
-	# tensorboard
-	logger = tb_logger.Logger(logdir=args.tb_folder, flush_secs=2)
-
-	# routine
-	for epoch in range(args.start_epoch, args.epochs + 1):
-
-		adjust_learning_rate(epoch, args, optimizer)
-		print("==> training...")
-
-		time1 = time.time()
-		l_loss, l_prob, ab_loss, ab_prob = train_cc(epoch, train_loader, model, contrast, criterion_l, criterion_ab,
-												 optimizer, args)
-		time2 = time.time()
-		print('epoch {}, total time {:.2f}'.format(epoch, time2 - time1))
-
-		# tensorboard logger
-		logger.log_value('l_loss', l_loss, epoch)
-		logger.log_value('l_prob', l_prob, epoch)
-		logger.log_value('ab_loss', ab_loss, epoch)
-		logger.log_value('ab_prob', ab_prob, epoch)
-
-		# save model
-		if epoch % args.save_freq == 0:
-			print('==> Saving...')
-			state = {
-				'opt': args,
-				'model': model.state_dict(),
-				'contrast': contrast.state_dict(),
-				'optimizer': optimizer.state_dict(),
-				'epoch': epoch,
-			}
-			if args.amp:
-				state['amp'] = amp.state_dict()
-			save_file = os.path.join(args.model_folder, 'ckpt_epoch_{epoch}.pth'.format(epoch=epoch))
-			torch.save(state, save_file)
-			# help release GPU memory
-			del state
-
-		torch.cuda.empty_cache()
 
 if __name__ == '__main__':
-	# main_cc()
 	main()
-
-# Readme
-# c is designed for loading existing data with corruption
-# 	but the dataloader can be a problem
-# cc is designed to change the source code slightly, by adding the corruption like Lab

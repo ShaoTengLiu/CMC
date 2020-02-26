@@ -249,6 +249,28 @@ class InsResNet50(nn.Module):
 
 	def forward(self, x, layer=7):
 		return self.encoder(x, layer)
+
+
+# class ResNetV1(nn.Module):
+#     def __init__(self, name='resnet50'):
+#         super(ResNetV1, self).__init__()
+#         if name == 'resnet50':
+#             self.l_to_ab = resnet50(in_channel=1, width=0.5)
+#             self.ab_to_l = resnet50(in_channel=2, width=0.5)
+#         elif name == 'resnet18':
+#             self.l_to_ab = resnet18(in_channel=1, width=0.5)
+#             self.ab_to_l = resnet18(in_channel=2, width=0.5)
+#         elif name == 'resnet101':
+#             self.l_to_ab = resnet101(in_channel=1, width=0.5)
+#             self.ab_to_l = resnet101(in_channel=2, width=0.5)
+#         else:
+#             raise NotImplementedError('model {} is not implemented'.format(name))
+
+#     def forward(self, x, layer=7):
+#         l, ab = torch.split(x, [1, 2], dim=1)
+#         feat_l = self.l_to_ab(l, layer)
+#         feat_ab = self.ab_to_l(ab, layer)
+#         return feat_l, feat_ab
 class ResNetV1(nn.Module):
 	def __init__(self, name='resnet50'):
 		super(ResNetV1, self).__init__()
@@ -278,6 +300,8 @@ class ResNetV1(nn.Module):
 		feat_l = self.l_to_ab(l, layer)
 		feat_ab = self.ab_to_l(ab, layer)
 		return feat_l, feat_ab
+
+
 class ResNetV2(nn.Module):
 	def __init__(self, name='resnet50'):
 		super(ResNetV2, self).__init__()
@@ -298,6 +322,8 @@ class ResNetV2(nn.Module):
 		feat_l = self.l_to_ab(l, layer)
 		feat_ab = self.ab_to_l(ab, layer)
 		return feat_l, feat_ab
+
+
 class ResNetV3(nn.Module):
 	def __init__(self, name='resnet50'):
 		super(ResNetV3, self).__init__()
@@ -319,19 +345,16 @@ class ResNetV3(nn.Module):
 		feat_ab = self.ab_to_l(ab, layer)
 		return feat_l, feat_ab
 
-
-# ----------------------------------------------
 class ResNet_ttt(nn.Module):
-	def __init__(self, view='Lab', level=5):
+	def __init__(self, view='Lab'):
 		super(ResNet_ttt, self).__init__()
-		if view == 'Lab': # one can add 'YCbCr' later
-			self.l_to_ab = ResNetCifar(depth=26, channels=1)
-			self.ab_to_l = ResNetCifar(depth=26, channels=2)
+		if view == 'Lab':
+			self.l_to_ab = ResNetCifar(26, 1, channels=1)
+			self.ab_to_l = ResNetCifar(26, 1, channels=2)
 		else:
-			self.l_to_ab = ResNetCifar(depth=26, channels=3)
-			self.ab_to_l = ResNetCifar(depth=26, channels=3)
+			self.l_to_ab = ResNetCifar(26, 1, channels=3)
+			self.ab_to_l = ResNetCifar(26, 1, channels=3)
 		self.view = view
-		self.level = level
 
 	def forward(self, x, layer=7): # layer can be removed
 		if self.view == 'Lab':
@@ -342,7 +365,7 @@ class ResNet_ttt(nn.Module):
 			x_np_tran = []
 			for i in range(x_np.shape[0]):
 				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, i, self.level) ).transpose(2, 0, 1) )
+				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, i, 5) ).transpose(2, 0, 1) )
 			x_np_tran = np.array(x_np_tran).astype(np.uint8)
 			ab = torch.from_numpy(x_np_tran).float().cuda()
 		else:
@@ -351,7 +374,7 @@ class ResNet_ttt(nn.Module):
 			x_np_tran = []
 			for i in range(x_np.shape[0]):
 				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, self.level) ).transpose(2, 0, 1) )
+				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, 5) ).transpose(2, 0, 1) )
 			x_np_tran = np.array(x_np_tran).astype(np.uint8)
 			ab = torch.from_numpy(x_np_tran).float().cuda()
 		
@@ -360,7 +383,7 @@ class ResNet_ttt(nn.Module):
 		return feat_l, feat_ab
 
 class MyResNetsCMC(nn.Module):
-	def __init__(self, name='resnet50v1', view='Lab', level=5):
+	def __init__(self, name='resnet50v1', view='Lab'):
 		super(MyResNetsCMC, self).__init__()
 		if name.endswith('v1'):
 			self.encoder = ResNetV1(name[:-2])
@@ -369,7 +392,7 @@ class MyResNetsCMC(nn.Module):
 		elif name.endswith('v3'):
 			self.encoder = ResNetV3(name[:-2])
 		elif 'ttt' in name:
-			self.encoder = ResNet_ttt(view = view, level=level)
+			self.encoder = ResNet_ttt(view = view)
 		else:
 			raise NotImplementedError('model not support: {}'.format(name))
 

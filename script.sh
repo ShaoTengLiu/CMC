@@ -5,11 +5,11 @@
 #  --view Lab
 
 
-CUDA_VISIBLE_DEVICES=6 python train_CMC.py --model resnet_ttt --batch_size 128 --num_workers 24 \
+CUDA_VISIBLE_DEVICES=1 python train_CMC.py --model resnet_ttt --batch_size 128 --num_workers 24 \
  --data_folder ../data/myCIFAR-10-C/ \
  --model_path ./results/model/ \
  --tb_path ./results/tb/ \
- --view scale --level 5
+ --view jpeg_compression --level 5
 
 
 # common_corruptions=("gaussian_noise" "shot_noise" "impulse_noise" "defocus_blur" "glass_blur" \

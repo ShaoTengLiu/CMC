@@ -102,6 +102,6 @@ class ResNetCifar(nn.Module):
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x) # (128, 128)
-        x = self.l2norm(x) # add this to try
+        x = self.l2norm(x) # this is from 2
         return x
         
