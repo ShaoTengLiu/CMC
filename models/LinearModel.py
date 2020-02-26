@@ -81,6 +81,10 @@ class LinearClassifierResNet(nn.Module):
             pool_size = 1
             nChannels = 2048 * width
             pool = pool_type
+        elif layer == 10: # this is designed for resnet of ttt
+            pool_size = 1
+            nChannels = 256 * width
+            pool = pool_type
         else:
             raise NotImplementedError('layer not supported: {}'.format(layer))
 

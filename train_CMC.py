@@ -14,7 +14,7 @@ import socket
 import tensorboard_logger as tb_logger
 
 from torchvision import transforms, datasets
-from dataset import RGB2Lab, RGB2YCbCr
+from dataset import RGB, RGB2Lab, RGB2YCbCr
 from util import adjust_learning_rate, AverageMeter
 
 from models.alexnet import MyAlexNetCMC
@@ -71,10 +71,7 @@ def parse_option():
 						help='path to latest checkpoint (default: none)')
 
 	# model definition
-	parser.add_argument('--model', type=str, default='alexnet', choices=['alexnet',
-																		 'resnet50v1', 'resnet101v1', 'resnet18v1',
-																		 'resnet50v2', 'resnet101v2', 'resnet18v2',
-																		 'resnet50v3', 'resnet101v3', 'resnet18v3'])
+	parser.add_argument('--model', type=str, default='alexnet')
 	parser.add_argument('--softmax', action='store_true', help='using softmax contrastive loss rather than NCE')
 	parser.add_argument('--nce_k', type=int, default=16384)
 	parser.add_argument('--nce_t', type=float, default=0.07)
@@ -92,6 +89,7 @@ def parse_option():
 	# add new views
 	# parser.add_argument('--view', type=str, default='Lab', choices=['Lab', 'YCbCr'])
 	parser.add_argument('--view', type=str, default='Lab')
+	parser.add_argument('--level', type=str, default='5')
 
 	# mixed precision setting
 	parser.add_argument('--amp', action='store_true', help='using mixed precision')
@@ -121,6 +119,8 @@ def parse_option():
 		opt.model_name = '{}_amp_{}'.format(opt.model_name, opt.opt_level)
 
 	opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
+	if opt.view in common_corruptions:
+		opt.model_name = '{}_level_{}'.format(opt.model_name, opt.level)
 
 	opt.model_folder = os.path.join(opt.model_path, opt.model_name)
 	if not os.path.isdir(opt.model_folder):
@@ -140,26 +140,36 @@ def get_train_loader(args):
 	"""get the train loader"""
 	data_folder = os.path.join(args.data_folder, 'train')
 
-	if args.view == 'Lab':
-		mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
-		std = [(100 - 0) / 2, (86.183 + 98.233) / 2, (107.857 + 94.478) / 2]
-		color_transfer = RGB2Lab()
-	elif args.view == 'YCbCr':
-		mean = [116.151, 121.080, 132.342]
-		std = [109.500, 111.855, 111.964]
-		color_transfer = RGB2YCbCr()
+	if args.view == 'Lab' or args.view == 'YCbCr':
+		if args.view == 'Lab':
+			mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
+			std = [(100 - 0) / 2, (86.183 + 98.233) / 2, (107.857 + 94.478) / 2]
+			color_transfer = RGB2Lab()
+		else:
+			mean = [116.151, 121.080, 132.342]
+			std = [109.500, 111.855, 111.964]
+			color_transfer = RGB2YCbCr()
+		normalize = transforms.Normalize(mean=mean, std=std)
+		train_transform = transforms.Compose([
+			# transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.)), # 224 -> 32
+			transforms.RandomCrop(32, padding=4), # maybe not necessary
+			transforms.RandomHorizontalFlip(),
+			color_transfer,
+			transforms.ToTensor(),
+			normalize,
+		])
 	else:
-		raise NotImplemented('view not implemented {}'.format(args.view))
-	normalize = transforms.Normalize(mean=mean, std=std)
+		print('Use RGB images with %s!' %(args.view))
+		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+		normalize = transforms.Normalize(*NORM)
+		color_transfer = RGB()
 
-	train_transform = transforms.Compose([
-		transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.)),
-		transforms.RandomHorizontalFlip(),
-		color_transfer,
-		transforms.ToTensor(),
-		normalize,
-	])
-	train_dataset = ImageFolderInstance(data_folder, transform=train_transform)
+		train_transform = transforms.Compose([
+			transforms.ToTensor()
+		])
+	
+	train_dataset = datasets.CIFAR10(root=args.data_folder,
+		train=True, download=True, transform=train_transform)
 	train_sampler = None
 
 	# train loader
@@ -172,6 +182,7 @@ def get_train_loader(args):
 	print('number of samples: {}'.format(n_data))
 
 	return train_loader, n_data
+
 def get_train_loader_c(args):
 	"""get the train loader"""
 	trsize = 50000
@@ -233,7 +244,7 @@ def get_train_loader_b(args):
 	"""get the train loader"""
 	trsize = 50000
 	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-	tr_transforms = transforms.Compose([#transforms.RandomCrop(32, padding=4), # 32 -> 256
+	tr_transforms = transforms.Compose([# transforms.RandomCrop(32, padding=4),
 										transforms.Resize(224),
 										transforms.RandomHorizontalFlip(),
 										transforms.ToTensor(),
@@ -260,7 +271,7 @@ def set_model(args, n_data):
 	if args.model == 'alexnet':
 		model = MyAlexNetCMC(args.feat_dim)
 	elif args.model.startswith('resnet'):
-		model = MyResNetsCMC(args.model)
+		model = MyResNetsCMC(args.model, args.view)
 	else:
 		raise ValueError('model not supported yet {}'.format(args.model))
 
@@ -356,9 +367,8 @@ def train(epoch, train_loader, model, contrast, criterion_l, criterion_ab, optim
 			inputs = inputs.cuda()
 
 		# ===================forward=====================
-		feat_l, feat_ab = model(inputs)
-		out_l, out_ab = contrast(feat_l, feat_ab, index)
-
+		feat_l, feat_ab = model(inputs) # 128, 128
+		out_l, out_ab = contrast(feat_l, feat_ab, index) # 128, 16385, 1
 		l_loss = criterion_l(out_l)
 		ab_loss = criterion_ab(out_ab)
 		l_prob = out_l[:, 0].mean()
@@ -560,7 +570,7 @@ def main():
 
 	# set the loader
 	# train_loader, n_data = get_train_loader(args)
-	train_loader, n_data = get_train_loader_b(args) # change to this if testing on cifar as baseline
+	train_loader, n_data = get_train_loader(args) # change to this if testing on cifar as baseline
 
 	# set the model
 	model, contrast, criterion_ab, criterion_l = set_model(args, n_data)
@@ -788,8 +798,8 @@ def main_cc():
 		torch.cuda.empty_cache()
 
 if __name__ == '__main__':
+	# main_cc()
 	main()
-	# main()
 
 # Readme
 # c is designed for loading existing data with corruption

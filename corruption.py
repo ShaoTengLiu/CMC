@@ -27,9 +27,7 @@ import cv2
 from scipy.ndimage import zoom as scizoom
 from scipy.ndimage.interpolation import map_coordinates
 import warnings
-
 from Resizer import resizer
-
 warnings.simplefilter("ignore", UserWarning)
 
 
@@ -232,8 +230,7 @@ def fog(x, severity=1):
 
     x = np.array(x) / 255.
     max_val = x.max()
-    size = 224
-    x += c[0] * plasma_fractal(mapsize=size,wibbledecay=c[1])[:size, :size][..., np.newaxis]
+    x += c[0] * plasma_fractal(wibbledecay=c[1])[:32, :32][..., np.newaxis]
     return np.clip(x * max_val / (max_val + c[0]), 0, 1) * 255
 
 
@@ -375,15 +372,45 @@ def jpeg_compression(x, severity=1):
 
 def pixelate(x, severity=1):
     c = [0.95, 0.9, 0.85, 0.75, 0.65][severity - 1]
-    size = 224
-    x = x.resize((int(size * c), int(size * c)), PILImage.BOX)
-    x = x.resize((size, size), PILImage.BOX)
+
+    x = x.resize((int(32 * c), int(32 * c)), PILImage.BOX)
+    x = x.resize((32, 32), PILImage.BOX)
 
     return x
 
 
 # mod of https://gist.github.com/erniejunior/601cdf56d2b424757de5
 def elastic_transform(image, severity=1):
+    IMSIZE = 32
+    c = [(IMSIZE*0, IMSIZE*0, IMSIZE*0.08),
+         (IMSIZE*0.05, IMSIZE*0.2, IMSIZE*0.07),
+         (IMSIZE*0.08, IMSIZE*0.06, IMSIZE*0.06),
+         (IMSIZE*0.1, IMSIZE*0.04, IMSIZE*0.05),
+         (IMSIZE*0.1, IMSIZE*0.03, IMSIZE*0.03)][severity - 1]
+
+    image = np.array(image, dtype=np.float32) / 255.
+    shape = image.shape
+    shape_size = shape[:2]
+
+    # random affine
+    center_square = np.float32(shape_size) // 2
+    square_size = min(shape_size) // 3
+    pts1 = np.float32([center_square + square_size,
+                       [center_square[0] + square_size, center_square[1] - square_size],
+                       center_square - square_size])
+    pts2 = pts1 + np.random.uniform(-c[2], c[2], size=pts1.shape).astype(np.float32)
+    M = cv2.getAffineTransform(pts1, pts2)
+    image = cv2.warpAffine(image, M, shape_size[::-1], borderMode=cv2.BORDER_REFLECT_101)
+
+    dx = (gaussian(np.random.uniform(-1, 1, size=shape[:2]),
+                   c[1], mode='reflect', truncate=3) * c[0]).astype(np.float32)
+    dy = (gaussian(np.random.uniform(-1, 1, size=shape[:2]),
+                   c[1], mode='reflect', truncate=3) * c[0]).astype(np.float32)
+    dx, dy = dx[..., np.newaxis], dy[..., np.newaxis]
+
+    x, y, z = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]), np.arange(shape[2]))
+    indices = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1)), np.reshape(z, (-1, 1))
+    return np.clip(map_coordinates(image, indices, order=1, mode='reflect').reshape(shape), 0, 1) * 255
     IMSIZE = 32
     c = [(IMSIZE*0, IMSIZE*0, IMSIZE*0.08),
          (IMSIZE*0.05, IMSIZE*0.2, IMSIZE*0.07),
@@ -425,11 +452,18 @@ def scale(image, severity=5):
     # else:
     #     des_size = 16 + 4 * (severity)
     # return np.uint8( resizer.imresize(image, scale_factor=des_size/32, output_shape=(des_size, des_size, 3)) )
-    ori_size = 224
+    ori_size = 32
     stride = ori_size // 2
     des_size = ori_size + stride * severity
-    return np.uint8( resizer.imresize(image, scale_factor=des_size/ori_size, output_shape=(des_size, des_size, 3)) )
+    return np.uint8( resizer.imresize(np.array(image), scale_factor=des_size/ori_size, output_shape=(des_size, des_size, 3)) )
 
+def various_noise(image, i, severity=5):
+    if i%3 == 0:
+        return gaussian_noise(image, severity)
+    elif i%3 == 1:
+        return shot_noise(image, severity)
+    else:
+        return impulse_noise(image, severity)
 # /////////////// End Distortions ///////////////
 
 import collections
@@ -458,30 +492,6 @@ def C_list():
     d['saturate'] = saturate
     d['original'] = lambda x:x
     d['scale'] = scale ###
+    d['various_noise'] = various_noise ###
     return d
-
-# source_path = './cifarpy'
-# des_path = './CIFAR-10-C/snow/train/'
-# # label_path = './CIFAR-10-C/gaussian_noise/train/labels.npy'
-
-# test_data = dset.CIFAR10(source_path, train=True, download=True)
-# convert_img = trn.Compose([trn.ToTensor(), trn.ToPILImage()])
-
-
-# for method_name in d.keys():
-#     print('Creating images for the corruption', method_name)
-#     cifar_c, labels = [], []
-
-#     for severity in range(1,6):
-#         corruption = lambda clean_img: d[method_name](clean_img, severity)
-
-#         for img, label in zip(test_data.data, test_data.targets):
-#             labels.append(label)
-#             cifar_c.append(np.uint8(corruption(convert_img(img))))
-
-#     np.save(des_path + d[method_name].__name__ + '.npy',
-#             np.array(cifar_c).astype(np.uint8))
-
-#     np.save(des_path + 'labels.npy',
-#             np.array(labels).astype(np.uint8))
 

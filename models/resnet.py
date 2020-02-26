@@ -4,6 +4,8 @@ import math
 import numpy as np
 import torch.utils.model_zoo as model_zoo
 from corruption import C_list
+from models.ttt_resnet import ResNetCifar
+from torchvision import transforms
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
 		   'resnet152']
@@ -16,6 +18,7 @@ model_urls = {
 	'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }
 
+convert_img = transforms.Compose([transforms.ToTensor(), transforms.ToPILImage()])
 
 def conv3x3(in_planes, out_planes, stride=1):
 	"""3x3 convolution with padding"""
@@ -178,8 +181,7 @@ class ResNet(nn.Module):
 		if layer == 6:
 			return x
 		x = self.fc(x)
-		x = self.l2norm(x)
-
+		x = self.l2norm(x) #(32,128)
 		return x
 
 
@@ -343,9 +345,45 @@ class ResNetV3(nn.Module):
 		feat_ab = self.ab_to_l(ab, layer)
 		return feat_l, feat_ab
 
+class ResNet_ttt(nn.Module):
+	def __init__(self, view='Lab'):
+		super(ResNet_ttt, self).__init__()
+		if view == 'Lab':
+			self.l_to_ab = ResNetCifar(26, 1, channels=1)
+			self.ab_to_l = ResNetCifar(26, 1, channels=2)
+		else:
+			self.l_to_ab = ResNetCifar(26, 1, channels=3)
+			self.ab_to_l = ResNetCifar(26, 1, channels=3)
+		self.view = view
+
+	def forward(self, x, layer=7): # layer can be removed
+		if self.view == 'Lab':
+			l, ab = torch.split(x, [1, 2], dim=1)
+		elif self.view == 'various_noise':
+			l = x
+			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
+			x_np_tran = []
+			for i in range(x_np.shape[0]):
+				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
+				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, i, 5) ).transpose(2, 0, 1) )
+			x_np_tran = np.array(x_np_tran).astype(np.uint8)
+			ab = torch.from_numpy(x_np_tran).float().cuda()
+		else:
+			l = x
+			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
+			x_np_tran = []
+			for i in range(x_np.shape[0]):
+				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
+				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, 5) ).transpose(2, 0, 1) )
+			x_np_tran = np.array(x_np_tran).astype(np.uint8)
+			ab = torch.from_numpy(x_np_tran).float().cuda()
+		
+		feat_l = self.l_to_ab(l)
+		feat_ab = self.ab_to_l(ab)
+		return feat_l, feat_ab
 
 class MyResNetsCMC(nn.Module):
-	def __init__(self, name='resnet50v1'):
+	def __init__(self, name='resnet50v1', view='Lab'):
 		super(MyResNetsCMC, self).__init__()
 		if name.endswith('v1'):
 			self.encoder = ResNetV1(name[:-2])
@@ -353,6 +391,9 @@ class MyResNetsCMC(nn.Module):
 			self.encoder = ResNetV2(name[:-2])
 		elif name.endswith('v3'):
 			self.encoder = ResNetV3(name[:-2])
+		elif 'ttt' in name:
+			self.encoder = ResNet_ttt(view = view)
+			# self.encoder = ResNetCifar(args.depth, args.width, channels=3, norm_layer=norm_layer)
 		else:
 			raise NotImplementedError('model not support: {}'.format(name))
 

@@ -23,7 +23,7 @@ from models.LinearModel import LinearClassifierAlexNet, LinearClassifierResNet
 
 import numpy as np
 # from spawn import spawn
-
+from PIL import Image
 
 def parse_option():
 
@@ -49,10 +49,7 @@ def parse_option():
 						help='path to latest checkpoint (default: none)')
 
 	# model definition
-	parser.add_argument('--model', type=str, default='alexnet', choices=['alexnet',
-																		 'resnet50v1', 'resnet101v1', 'resnet18v1',
-																		 'resnet50v2', 'resnet101v2', 'resnet18v2',
-																		 'resnet50v3', 'resnet101v3', 'resnet18v3'])
+	parser.add_argument('--model', type=str, default='alexnet')
 	parser.add_argument('--model_path', type=str, default=None, help='the model to test')
 	parser.add_argument('--layer', type=int, default=6, help='which layer to evaluate')
 
@@ -148,7 +145,47 @@ def parse_option():
 	teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size,
 											shuffle=True, num_workers=args.num_workers)
 	return trloader, teloader
+
 def get_val_loader(args):
+	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
+							'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
+							'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+	if args.view == 'Lab' or args.view == 'YCbCr':
+		if args.view == 'Lab':
+			mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
+			std = [(100 - 0) / 2, (86.183 + 98.233) / 2, (107.857 + 94.478) / 2]
+			color_transfer = RGB2Lab()
+		else:
+			mean = [116.151, 121.080, 132.342]
+			std = [109.500, 111.855, 111.964]
+			color_transfer = RGB2YCbCr()
+		normalize = transforms.Normalize(mean=mean, std=std)
+
+		tr_transform = transforms.Compose([
+			# transforms.RandomCrop(32, padding=4), # maybe not necessary
+			color_transfer,
+			transforms.ToTensor(),
+			normalize,
+		])
+		val_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=False,
+			transform=tr_transform
+		)
+		if args.corruption in common_corruptions:
+			print('Test on %s!' %(args.corruption))
+			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
+			teset_raw = color_transfer( Image.fromarray(teset_raw.astype(np.uint8)) )
+			val_dataset.data = teset_raw
+
+	print('number of val: {}'.format(len(val_dataset)))
+
+	val_loader = torch.utils.data.DataLoader(
+		val_dataset, batch_size=args.batch_size, shuffle=False,
+		num_workers=args.num_workers, pin_memory=True)
+
+	return val_loader
+def get_val_loader_c(args):
 	"""get the train loader"""
 	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
 				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
@@ -171,12 +208,12 @@ def get_val_loader(args):
 		print('Test on %s' %(args.corruption))
 		# teset_raw = np.load(args.data_folder + '/clean/val/images.npy') # use these two if you want to test on clean data
 		# telabel_raw = np.load(args.data_folder + '/clean/val/labels.npy')
-		# teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
+		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
 		
 		# if args.corruption == 'scale':
 		# 	teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/upsample_%s_images.npy' %(str(args.level)))
 		# else:
-		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s.npy' %(args.corruption))[(args.level-1)*tesize: args.level*tesize]
+		# teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s.npy' %(args.corruption))[(args.level-1)*tesize: args.level*tesize]
 		telabel_raw = np.load(args.data_folder + 'CIFAR-10-C-trainval/val/labels.npy')[(args.level-1)*tesize: args.level*tesize]
 		teset = datasets.CIFAR10(root=args.data_folder,
 				train=False, download=True, transform=te_transforms)
@@ -196,12 +233,8 @@ def get_val_loader(args):
 
 def set_model(args):
 	if args.model.startswith('alexnet'):
-		if args.view == 'Lab':
-			model = MyAlexNetCMC()
-			classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
-		else:
-			model = MyAlexNetCMC_cc(corruption=args.view)
-			classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
+		model = MyAlexNetCMC()
+		classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
 	elif args.model.startswith('resnet'):
 		model = MyResNetsCMC(args.model)
 		if args.model.endswith('v1'):
@@ -210,6 +243,8 @@ def set_model(args):
 			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 2)
 		elif args.model.endswith('v3'):
 			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 4)
+		elif 'ttt' in args.model:
+			classifier = LinearClassifierResNet(10, args.n_label, 'avg', 1)
 		else:
 			raise NotImplementedError('model not supported {}'.format(args.model))
 	else:
@@ -228,37 +263,6 @@ def set_model(args):
 	model.eval()
 
 	return model, classifier
-	if args.model.startswith('alexnet'):
-		model = MyAlexNetCMC_cc(corruption=args.view)
-		classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
-	elif args.model.startswith('resnet'):
-		model = MyResNetsCMC(args.model)
-		if args.model.endswith('v1'):
-			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 1)
-		elif args.model.endswith('v2'):
-			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 2)
-		elif args.model.endswith('v3'):
-			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 4)
-		else:
-			raise NotImplementedError('model not supported {}'.format(args.model))
-	else:
-		raise NotImplementedError('model not supported {}'.format(args.model))
-
-	# load pre-trained model
-	print('==> loading pre-trained model')
-	ckpt = torch.load(args.model_path)
-	model.load_state_dict(ckpt['model'])
-	print("==> loaded checkpoint '{}' (epoch {})".format(args.model_path, ckpt['epoch']))
-	print('==> done')
-
-	model = model.cuda()
-	classifier = classifier.cuda()
-
-	model.eval()
-
-	criterion = nn.CrossEntropyLoss().cuda(args.gpu)
-
-	return model, classifier, criterion
 
 def validate(val_loader, model, classifier, opt):
 	"""

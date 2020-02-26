@@ -49,10 +49,7 @@ def parse_option():
 						help='path to latest checkpoint (default: none)')
 
 	# model definition
-	parser.add_argument('--model', type=str, default='alexnet', choices=['alexnet',
-																		 'resnet50v1', 'resnet101v1', 'resnet18v1',
-																		 'resnet50v2', 'resnet101v2', 'resnet18v2',
-																		 'resnet50v3', 'resnet101v3', 'resnet18v3'])
+	parser.add_argument('--model', type=str, default='alexnet')
 	parser.add_argument('--model_path', type=str, default=None, help='the model to test')
 	parser.add_argument('--layer', type=int, default=6, help='which layer to evaluate')
 
@@ -61,8 +58,8 @@ def parse_option():
 
 	# add new views
 	parser.add_argument('--view', type=str, default='Lab')
-	parser.add_argument('--corruption', type=str, default='original')
-	parser.add_argument('--level', type=int, default=5, help='The level of corruption')
+	# parser.add_argument('--corruption', type=str, default='original')
+	# parser.add_argument('--level', type=int, default=5, help='The level of corruption')
 	# path definition
 	parser.add_argument('--data_folder', type=str, default=None, help='path to data')
 	parser.add_argument('--save_path', type=str, default=None, help='path to save linear classifier')
@@ -96,7 +93,7 @@ def parse_option():
 																  opt.weight_decay)
 
 	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
-	opt.model_name = '{}_view_{}'.format(opt.model_name, opt.corruption)
+	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.corruption)
 	# one may change this view into corruption to make the name more reasonable
 
 	opt.tb_folder = os.path.join(opt.tb_path, opt.model_name + '_layer{}'.format(opt.layer))
@@ -118,41 +115,62 @@ def parse_option():
 
 
 def get_train_val_loader(args):
-	train_folder = os.path.join(args.data_folder, 'train')
-	val_folder = os.path.join(args.data_folder, 'val')
-
-	if args.view == 'Lab':
-		mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
-		std = [(100 - 0) / 2, (86.183 + 98.233) / 2, (107.857 + 94.478) / 2]
-		color_transfer = RGB2Lab()
-	elif args.view == 'YCbCr':
-		mean = [116.151, 121.080, 132.342]
-		std = [109.500, 111.855, 111.964]
-		color_transfer = RGB2YCbCr()
+	if args.view == 'Lab' or args.view == 'YCbCr':
+		if args.view == 'Lab':
+			mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
+			std = [(100 - 0) / 2, (86.183 + 98.233) / 2, (107.857 + 94.478) / 2]
+			color_transfer = RGB2Lab()
+		else:
+			mean = [116.151, 121.080, 132.342]
+			std = [109.500, 111.855, 111.964]
+			color_transfer = RGB2YCbCr()
+		normalize = transforms.Normalize(mean=mean, std=std)
+		train_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=True,
+			transform=transforms.Compose([
+				# transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.0)),
+				# transforms.RandomCrop(32, padding=4), # maybe not necessary
+				transforms.RandomHorizontalFlip(),
+				color_transfer,
+				transforms.ToTensor(),
+				normalize,
+			])
+		)
+		val_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=False,
+			transform=transforms.Compose([
+				# transforms.RandomCrop(32, padding=4), # maybe not necessary
+				color_transfer,
+				transforms.ToTensor(),
+				normalize,
+			])
+		)
 	else:
-		raise NotImplemented('view not implemented {}'.format(args.view))
-
-	normalize = transforms.Normalize(mean=mean, std=std)
-	train_dataset = datasets.ImageFolder(
-		train_folder,
-		transforms.Compose([
-			transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.0)),
-			transforms.RandomHorizontalFlip(),
-			color_transfer,
-			transforms.ToTensor(),
-			normalize,
-		])
-	)
-	val_dataset = datasets.ImageFolder(
-		val_folder,
-		transforms.Compose([
-			transforms.Resize(256),
-			transforms.CenterCrop(224),
-			color_transfer,
-			transforms.ToTensor(),
-			normalize,
-		])
-	)
+		print('Use RGB images with %s!' %(args.view))
+		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+		normalize = transforms.Normalize(*NORM)
+		train_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=True,
+			transform=transforms.Compose([
+				# transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.0)),
+				# transforms.RandomCrop(32, padding=4), # maybe not necessary
+				transforms.RandomHorizontalFlip(),
+				transforms.ToTensor(),
+				normalize,
+			])
+		)
+		val_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=False,
+			transform=transforms.Compose([
+				# transforms.RandomCrop(32, padding=4), # maybe not necessary
+				transforms.ToTensor(),
+				normalize,
+			])
+		)
 	print('number of train: {}'.format(len(train_dataset)))
 	print('number of val: {}'.format(len(val_dataset)))
 
@@ -272,13 +290,15 @@ def set_model(args):
 		model = MyAlexNetCMC()
 		classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
 	elif args.model.startswith('resnet'):
-		model = MyResNetsCMC(args.model)
+		model = MyResNetsCMC(name=args.model, view=args.view)
 		if args.model.endswith('v1'):
 			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 1)
 		elif args.model.endswith('v2'):
 			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 2)
 		elif args.model.endswith('v3'):
 			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 4)
+		elif 'ttt' in args.model:
+			classifier = LinearClassifierResNet(10, args.n_label, 'avg', 1)
 		else:
 			raise NotImplementedError('model not supported {}'.format(args.model))
 	else:
@@ -468,7 +488,7 @@ def main():
 		print("Use GPU: {} for training".format(args.gpu))
 
 	# set the data loader
-	train_loader, val_loader = get_train_val_loader_b(args)
+	train_loader, val_loader, train_sampler = get_train_val_loader(args)
 	# set the model
 	model, classifier, criterion = set_model(args)
 
@@ -684,5 +704,5 @@ def main_cc():
 
 if __name__ == '__main__':
 	best_acc1 = 0
-	main_cc() # change to this if you want to train based on LAb
+	main() # change to this if you want to train based on LAb
 	# main_cc()

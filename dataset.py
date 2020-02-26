@@ -36,6 +36,10 @@ class ImageFolderInstance(datasets.ImageFolder):
 
         return img, target, index
 
+class RGB(object):
+    """Return RGB PIL image directly."""
+    def __call__(self, img):
+        return img
 
 class RGB2Lab(object):
     """Convert RGB PIL image to ndarray Lab."""
