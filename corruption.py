@@ -237,7 +237,8 @@ def fog(x, severity=1):
 def frost(x, severity=1):
     c = [(1, 0.2), (1, 0.3), (0.9, 0.4), (0.85, 0.4), (0.75, 0.45)][severity - 1]
     idx = np.random.randint(5)
-    filename = ['./frost1.png', './frost2.png', './frost3.png', './frost4.jpg', './frost5.jpg', './frost6.jpg'][idx]
+    base_path = '../robustness/ImageNet-C/create_c'
+    filename = [base_path+'/frost1.png', base_path+'/frost2.png', base_path+'/frost3.png', base_path+'/frost4.jpg', base_path+'/frost5.jpg', base_path+'/frost6.jpg'][idx]
     frost = cv2.imread(filename)
     frost = cv2.resize(frost, (0, 0), fx=0.2, fy=0.2)
     # randomly crop and convert to rgb

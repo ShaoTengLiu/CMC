@@ -356,41 +356,35 @@ class ResNet_ttt(nn.Module):
 		if self.view == 'Lab':
 			l, ab = torch.split(x, [1, 2], dim=1)
 		elif self.view == 'various_noise':
+			l = x
 			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
-
-			x_l = []
 			x_np_tran = []
 			for i in range(x_np.shape[0]):
 				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, i, self.level) )
-				x_np_i_c_n = add_transform(x_np_i_c)
-				x_np_i_c_n = x_np_i_c_n.detach().numpy()
-				x_np_tran.append( x_np_i_c_n )
-
-				x_l.append( add_transform(x_np_i).detach().numpy() )
+				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, i, self.level) ).transpose(2, 0, 1) )
 			x_np_tran = np.array(x_np_tran).astype(np.uint8)
 			ab = torch.from_numpy(x_np_tran).float().cuda()
-
-			x_l = np.array(x_l).astype(np.uint8)
-			l = torch.from_numpy(x_l).float().cuda()
+			# ab = normalize(ab)
 		else:
-			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
+			# des = './show/pic/img_np_i_c_gn_1_n.jpg'
 
-			x_l = []
+			l = x
+			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
 			x_np_tran = []
 			for i in range(x_np.shape[0]):
 				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
 				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, self.level) )
 				x_np_i_c_n = add_transform(x_np_i_c)
 				x_np_i_c_n = x_np_i_c_n.detach().numpy()
+				# img = convert_img( x_np_i_c_n.transpose(1, 2, 0) )
+				# if i == 100:
+				# 	img.save(des)
+				# x_np_tran.append( np.uint8( x_np_i_c.transpose(2, 0, 1) ) )
 				x_np_tran.append( x_np_i_c_n )
-
-				x_l.append( add_transform(x_np_i).detach().numpy() )
 			x_np_tran = np.array(x_np_tran).astype(np.uint8)
 			ab = torch.from_numpy(x_np_tran).float().cuda()
-
-			x_l = np.array(x_l).astype(np.uint8)
-			l = torch.from_numpy(x_l).float().cuda()
+			print(ab.size())
+			# ab = normalize(ab)
 		
 		feat_l = self.l_to_ab(l)
 		feat_ab = self.ab_to_l(ab)

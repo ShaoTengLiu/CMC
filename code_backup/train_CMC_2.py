@@ -155,10 +155,13 @@ def get_train_loader(args):
 		])
 	else:
 		print('Use RGB images with %s level %s!' %(args.view, str(args.level)))
+		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+		normalize = transforms.Normalize(*NORM)
 		train_transform = transforms.Compose([
 			transforms.RandomCrop(32, padding=4), # maybe not necessary
 			transforms.RandomHorizontalFlip(),
-			transforms.ToTensor()
+			transforms.ToTensor(),
+			normalize,
 		])
 	
 	train_dataset = datasets.CIFAR10(root=args.data_folder,

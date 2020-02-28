@@ -6,19 +6,7 @@ import torch.utils.model_zoo as model_zoo
 from corruption import C_list
 from models.ttt_resnet import ResNetCifar # use this for corruption commmonly
 from torchvision import transforms
-from PIL import Image
-# NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-# normalize = transforms.Normalize(*NORM)
-# norm = transforms.Compose([transforms.ToTensor(), transforms.Normalize(*NORM)])
-# def normalize(x):
-# 	x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
-# 	x_np_tran = []
-# 	for i in range(x_np.shape[0]):
-# 		x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-# 		x_np_tran.append( norm(x_np_i).detach().numpy())#.transpose(2, 0, 1) )
-# 	x_np_tran = np.array(x_np_tran).astype(np.uint8)
-# 	y = torch.from_numpy(x_np_tran).float().cuda()
-# 	return y
+
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
 		   'resnet152']
@@ -33,12 +21,6 @@ model_urls = {
 
 convert_img = transforms.Compose([transforms.ToTensor(), transforms.ToPILImage()])
 
-NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-normalize = transforms.Normalize(*NORM)
-add_transform = transforms.Compose([
-    transforms.ToTensor(),
-    normalize,
-])
 def conv3x3(in_planes, out_planes, stride=1):
 	"""3x3 convolution with padding"""
 	return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -356,41 +338,23 @@ class ResNet_ttt(nn.Module):
 		if self.view == 'Lab':
 			l, ab = torch.split(x, [1, 2], dim=1)
 		elif self.view == 'various_noise':
+			l = x
 			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
-
-			x_l = []
 			x_np_tran = []
 			for i in range(x_np.shape[0]):
 				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, i, self.level) )
-				x_np_i_c_n = add_transform(x_np_i_c)
-				x_np_i_c_n = x_np_i_c_n.detach().numpy()
-				x_np_tran.append( x_np_i_c_n )
-
-				x_l.append( add_transform(x_np_i).detach().numpy() )
+				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, i, self.level) ).transpose(2, 0, 1) )
 			x_np_tran = np.array(x_np_tran).astype(np.uint8)
 			ab = torch.from_numpy(x_np_tran).float().cuda()
-
-			x_l = np.array(x_l).astype(np.uint8)
-			l = torch.from_numpy(x_l).float().cuda()
 		else:
+			l = x
 			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
-
-			x_l = []
 			x_np_tran = []
 			for i in range(x_np.shape[0]):
 				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, self.level) )
-				x_np_i_c_n = add_transform(x_np_i_c)
-				x_np_i_c_n = x_np_i_c_n.detach().numpy()
-				x_np_tran.append( x_np_i_c_n )
-
-				x_l.append( add_transform(x_np_i).detach().numpy() )
+				x_np_tran.append( np.uint8( C_list()[self.view](x_np_i, self.level) ).transpose(2, 0, 1) )
 			x_np_tran = np.array(x_np_tran).astype(np.uint8)
 			ab = torch.from_numpy(x_np_tran).float().cuda()
-
-			x_l = np.array(x_l).astype(np.uint8)
-			l = torch.from_numpy(x_l).float().cuda()
 		
 		feat_l = self.l_to_ab(l)
 		feat_ab = self.ab_to_l(ab)

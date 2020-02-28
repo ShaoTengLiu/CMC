@@ -58,9 +58,8 @@ def parse_option():
 
 	# add new views
 	parser.add_argument('--view', type=str, default='Lab')
-	parser.add_argument('--level', type=int, default=5, help='The level of model')
 	parser.add_argument('--corruption', type=str, default='original')
-	parser.add_argument('--test_level', type=int, default=5, help='The level of corruption')
+	parser.add_argument('--level', type=int, default=5, help='The level of corruption')
 	# path definition
 	parser.add_argument('--data_folder', type=str, default=None, help='path to data')
 	# data crop threshold
@@ -100,6 +99,53 @@ def parse_option():
 
 	return opt
 
+
+	"""get the train loader"""
+	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
+				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
+				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression', 'scale']
+	trsize = 50000
+	tesize = 10000
+	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+	tr_transforms = transforms.Compose([#transforms.RandomCrop(32, padding=4), # 32 -> 256
+										transforms.Resize(224),
+										transforms.RandomHorizontalFlip(),
+										transforms.ToTensor(),
+										transforms.Normalize(*NORM)])
+	te_transforms = transforms.Compose([transforms.Resize(224),
+										transforms.ToTensor(),
+										transforms.Normalize(*NORM)])
+
+	print('Train on %s' %(args.dataset))
+	trset_raw = np.load(args.data_folder + '/clean/train/images.npy')
+	trlabel_raw = np.load(args.data_folder + '/clean/train/labels.npy')
+	trset = datasets.CIFAR10(root=args.data_folder,
+			train=True, download=True, transform=tr_transforms)
+	trset.data = trset_raw
+	trset.targets = trlabel_raw
+
+	if args.corruption in common_corruptions:
+		# print('Train on %s level %d' %(args.corruption, args.level))
+		print('Test on %s' %(args.corruption))
+		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
+		telabel_raw = np.load(args.data_folder + 'CIFAR-10-C-trainval/val/labels.npy')[(args.level-1)*tesize: args.level*tesize]
+		teset = datasets.CIFAR10(root=args.data_folder,
+				train=False, download=True, transform=te_transforms)
+		teset.data = teset_raw
+		teset.targets = telabel_raw
+	elif args.corruption == 'original':
+		teset = datasets.CIFAR10(root=args.data_folder,
+				train=False, download=True, transform=te_transforms)
+	else:
+		raise Exception('Corruption not found!')
+
+	# train loader
+	trloader = torch.utils.data.DataLoader(trset, batch_size=args.batch_size,
+											shuffle=True, num_workers=args.num_workers)
+	teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size,
+											shuffle=True, num_workers=args.num_workers)
+	return trloader, teloader
+
 def get_val_loader(args):
 	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
 							'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
@@ -117,6 +163,7 @@ def get_val_loader(args):
 		normalize = transforms.Normalize(mean=mean, std=std)
 
 		te_transform = transforms.Compose([
+			# transforms.RandomCrop(32, padding=4), # maybe not necessary
 			color_transfer,
 			transforms.ToTensor(),
 			normalize,
@@ -128,15 +175,16 @@ def get_val_loader(args):
 		)
 		if args.corruption in common_corruptions:
 			print('Test on %s!' %(args.corruption))
-			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
+			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
 			teset_raw = color_transfer( Image.fromarray(teset_raw.astype(np.uint8)) )
 			val_dataset.data = teset_raw
 	else:
 		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 		normalize = transforms.Normalize(*NORM)
 		te_transform = transforms.Compose([
+			# transforms.RandomCrop(32, padding=4), # maybe not necessary
 			transforms.ToTensor(),
-			# normalize,
+			normalize,
 		])
 		val_dataset = datasets.CIFAR10(
 			root=args.data_folder,
@@ -145,7 +193,7 @@ def get_val_loader(args):
 		)
 		if args.corruption in common_corruptions:
 			print('Test on %s!' %(args.corruption))
-			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
+			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
 			val_dataset.data = teset_raw
 
 	print('number of val: {}'.format(len(val_dataset)))
@@ -155,13 +203,58 @@ def get_val_loader(args):
 		num_workers=args.num_workers, pin_memory=True)
 
 	return val_loader
+def get_val_loader_c(args):
+	"""get the train loader"""
+	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
+				'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
+				'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+	tesize = 10000
+	NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+	if args.corruption == 'scale':
+		te_transforms = transforms.Compose([transforms.Resize(224*(1 + args.level//2)),
+											transforms.ToTensor(),
+											transforms.Normalize(*NORM)])
+	else:
+		te_transforms = transforms.Compose([transforms.Resize(224),
+									transforms.ToTensor(),
+									transforms.Normalize(*NORM)])
+	# te_transforms = transforms.Compose([transforms.ToTensor(),
+	# 								transforms.Normalize(*NORM)])
+
+	if args.corruption in common_corruptions:
+		# print('Train on %s level %d' %(args.corruption, args.level))
+		print('Test on %s' %(args.corruption))
+		# teset_raw = np.load(args.data_folder + '/clean/val/images.npy') # use these two if you want to test on clean data
+		# telabel_raw = np.load(args.data_folder + '/clean/val/labels.npy')
+		teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.level - 1)))
+		
+		# if args.corruption == 'scale':
+		# 	teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/upsample_%s_images.npy' %(str(args.level)))
+		# else:
+		# teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s.npy' %(args.corruption))[(args.level-1)*tesize: args.level*tesize]
+		telabel_raw = np.load(args.data_folder + 'CIFAR-10-C-trainval/val/labels.npy')[(args.level-1)*tesize: args.level*tesize]
+		teset = datasets.CIFAR10(root=args.data_folder,
+				train=False, download=True, transform=te_transforms)
+		teset.data = teset_raw
+		teset.targets = telabel_raw
+	elif args.corruption == 'original' or args.corruption == 'scale':
+		teset = datasets.CIFAR10(root=args.data_folder,
+				train=False, download=True, transform=te_transforms)
+	else:
+		raise Exception('Corruption not found!')
+
+	# train loader
+	teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size,
+											shuffle=True, num_workers=args.num_workers)
+	return teloader
+# one can combine cc and b by letting corruption = views
 
 def set_model(args):
 	if args.model.startswith('alexnet'):
 		model = MyAlexNetCMC()
 		classifier = LinearClassifierAlexNet(layer=args.layer, n_label=args.n_label, pool_type='max')
 	elif args.model.startswith('resnet'):
-		model = MyResNetsCMC(name=args.model, view=args.view, level=args.level)
+		model = MyResNetsCMC(name=args.model, view=args.view)
 		if args.model.endswith('v1'):
 			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 1)
 		elif args.model.endswith('v2'):
@@ -223,7 +316,7 @@ def validate(val_loader, model, classifier, opt):
 			# measure elapsed time
 			batch_time.update(time.time() - end)
 			end = time.time()
-			break # temp
+
 			# if idx % opt.print_freq == 0:
 			# 	print('Test: [{0}/{1}]\t'
 			# 		  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
@@ -236,6 +329,7 @@ def validate(val_loader, model, classifier, opt):
 			  .format(top1=top1, top5=top5))
 
 	return top1.avg, top5.avg
+
 
 def main():
 	global best_acc1
@@ -272,7 +366,120 @@ def main():
 
 		# tensorboard logger
 		pass
+def main_cc():
+	global best_acc1
+	best_acc1 = 0
+
+	args = parse_option()
+
+	if args.gpu is not None:
+		print("Use GPU: {} for training".format(args.gpu))
+
+	# set the data loader
+	train_loader, val_loader = get_train_val_loader_cc(args)
+
+	# set the model
+	model, classifier, criterion = set_model_cc(args)
+
+	# set optimizer
+	optimizer = set_optimizer(args, classifier)
+
+	cudnn.benchmark = True
+
+	# optionally resume linear classifier
+	args.start_epoch = 1
+	if args.resume:
+		if os.path.isfile(args.resume):
+			print("=> loading checkpoint '{}'".format(args.resume))
+			checkpoint = torch.load(args.resume)
+			args.start_epoch = checkpoint['epoch'] + 1
+			best_acc1 = checkpoint['best_acc1']
+			if args.gpu is not None:
+				# best_acc1 may be from a checkpoint from a different GPU
+				best_acc1 = best_acc1.to(args.gpu)
+			classifier.load_state_dict(checkpoint['classifier'])
+			optimizer.load_state_dict(checkpoint['optimizer'])
+			print("=> loaded checkpoint '{}' (epoch {})"
+				  .format(args.resume, checkpoint['epoch']))
+		else:
+			print("=> no checkpoint found at '{}'".format(args.resume))
+
+	args.start_epoch = 1
+	if args.resume:
+		if os.path.isfile(args.resume):
+			print("=> loading checkpoint '{}'".format(args.resume))
+			checkpoint = torch.load(args.resume, map_location='cpu')
+			args.start_epoch = checkpoint['epoch'] + 1
+			classifier.load_state_dict(checkpoint['classifier'])
+			optimizer.load_state_dict(checkpoint['optimizer'])
+			best_acc1 = checkpoint['best_acc1']
+			best_acc1 = best_acc1.cuda()
+			print("=> loaded checkpoint '{}' (epoch {})"
+				  .format(args.resume, checkpoint['epoch']))
+			del checkpoint
+			torch.cuda.empty_cache()
+		else:
+			print("=> no checkpoint found at '{}'".format(args.resume))
+
+	# tensorboard
+	logger = tb_logger.Logger(logdir=args.tb_folder, flush_secs=2)
+
+	# routine
+	for epoch in range(args.start_epoch, args.epochs + 1):
+
+		adjust_learning_rate(epoch, args, optimizer)
+		print("==> training...")
+
+		time1 = time.time()
+		train_acc, train_acc5, train_loss = train(epoch, train_loader, model, classifier, criterion, optimizer, args)
+		time2 = time.time()
+		print('train epoch {}, total time {:.2f}'.format(epoch, time2 - time1))
+
+		logger.log_value('train_acc', train_acc, epoch)
+		logger.log_value('train_acc5', train_acc5, epoch)
+		logger.log_value('train_loss', train_loss, epoch)
+
+		print("==> testing...")
+		test_acc, test_acc5, test_loss = validate(val_loader, model, classifier, criterion, args)
+
+		logger.log_value('test_acc', test_acc, epoch)
+		logger.log_value('test_acc5', test_acc5, epoch)
+		logger.log_value('test_loss', test_loss, epoch)
+
+		# save the best model
+		if test_acc > best_acc1:
+			best_acc1 = test_acc
+			state = {
+				'opt': args,
+				'epoch': epoch,
+				'classifier': classifier.state_dict(),
+				'best_acc1': best_acc1,
+				'optimizer': optimizer.state_dict(),
+			}
+			save_name = '{}_layer{}.pth'.format(args.model, args.layer)
+			save_name = os.path.join(args.save_folder, save_name)
+			print('saving best model!')
+			torch.save(state, save_name)
+
+		# save model
+		if epoch % args.save_freq == 0:
+			print('==> Saving...')
+			state = {
+				'opt': args,
+				'epoch': epoch,
+				'classifier': classifier.state_dict(),
+				'best_acc1': test_acc,
+				'optimizer': optimizer.state_dict(),
+			}
+			save_name = 'ckpt_epoch_{epoch}.pth'.format(epoch=epoch)
+			save_name = os.path.join(args.save_folder, save_name)
+			print('saving regular model!')
+			torch.save(state, save_name)
+
+		# tensorboard logger
+		pass
 
 if __name__ == '__main__':
 	best_acc1 = 0
-	main()
+	main() # change to this if you want to train based on LAb
+	# main_cc()
