@@ -18,7 +18,7 @@ from dataset import RGB2Lab, RGB2YCbCr
 from util import adjust_learning_rate, AverageMeter, accuracy
 
 from models.alexnet import MyAlexNetCMC, MyAlexNetCMC_cc
-from models.resnet import MyResNetsCMC
+from models.resnet_2 import MyResNetsCMC
 from models.LinearModel import LinearClassifierAlexNet, LinearClassifierResNet
 
 import numpy as np

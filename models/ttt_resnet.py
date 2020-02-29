@@ -74,7 +74,8 @@ class ResNetCifar(nn.Module):
         # self.avgpool = nn.AvgPool2d(8)
         self.avgpool = nn.AdaptiveAvgPool2d(1) # use it when you want to test pictures with different scale
         # self.fc = nn.Linear(64 * width, classes)
-        self.fc = nn.Linear(64 * width, 128) # keep the dimension of features 128
+        # self.fc = nn.Linear(64 * width, 128) # keep the dimension of features 128
+        self.fc = nn.Linear(64 * width, 64 * width) # keep the dimension of features 128
         self.l2norm = Normalize(2)
         # Initialization
         for m in self.modules():

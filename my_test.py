@@ -4,7 +4,7 @@ from PIL import Image
 from torchvision import transforms, datasets
 
 data_folder = '../data/myCIFAR-10-C/'
-des = './show/pic/sample_fromloader_nonorm_addnorm.jpg'
+des = './show/pic/origin_n.jpg'
 
 NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 normalize = transforms.Normalize(*NORM)
@@ -19,7 +19,8 @@ add_transform = transforms.Compose([
 val_dataset = datasets.CIFAR10(
     root=data_folder,
     train=False,
-    transform=te_transform
+    # transform=te_transform
+    transform=add_transform
 )
 
 print('number of val: {}'.format(len(val_dataset)))
@@ -39,22 +40,22 @@ for idx, (input, target) in enumerate(val_loader):
     input = input.float() # (256, 3, 32, 32)
     sample = input[100].detach().numpy()
     img = convert_img( sample.transpose(1, 2, 0) )
-    img = add_transform(img)
-    sample = img.detach().numpy()
-    img = convert_img( sample.transpose(1, 2, 0) )
-    # img.save(des)
+    # img = add_transform(img)
+    # sample = img.detach().numpy()
+    # img = convert_img( sample.transpose(1, 2, 0) )
+    img.save(des)
     break
 
-gn5_path = '/home/dqwang/stliu/data/myCIFAR-10-C/CIFAR-10-C-trainval/val/gaussian_noise_4_images.npy'
-gn1_path = '/home/dqwang/stliu/data/myCIFAR-10-C/CIFAR-10-C-trainval/val/gaussian_noise_0_images.npy'
-des5 = './show/pic/gn_5.jpg'
-des1 = './show/pic/gn_1.jpg'
+# gn5_path = '/home/dqwang/stliu/data/myCIFAR-10-C/CIFAR-10-C-trainval/val/gaussian_noise_4_images.npy'
+# gn1_path = '/home/dqwang/stliu/data/myCIFAR-10-C/CIFAR-10-C-trainval/val/gaussian_noise_0_images.npy'
+# des5 = './show/pic/gn_5.jpg'
+# des1 = './show/pic/gn_1.jpg'
 
-gn5 = np.load(gn5_path)[100]
-gn1 = np.load(gn1_path)[100]
+# gn5 = np.load(gn5_path)[100]
+# gn1 = np.load(gn1_path)[100]
 
-img5 = convert_img(gn5)
-img1 = convert_img(gn1)
+# img5 = convert_img(gn5)
+# img1 = convert_img(gn1)
 
-img5.save(des5)
-img1.save(des1)
+# img5.save(des5)
+# img1.save(des1)

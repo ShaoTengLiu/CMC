@@ -365,6 +365,7 @@ class ResNet_ttt(nn.Module):
 				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, i, self.level) )
 				x_np_i_c_n = add_transform(x_np_i_c)
 				x_np_i_c_n = x_np_i_c_n.detach().numpy()
+
 				x_np_tran.append( x_np_i_c_n )
 
 				x_l.append( add_transform(x_np_i).detach().numpy() )
@@ -381,10 +382,20 @@ class ResNet_ttt(nn.Module):
 			for i in range(x_np.shape[0]):
 				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
 				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, self.level) )
+				
+				# x_np_i_c_n = x_np_i_c.transpose(2, 0, 1)
 				x_np_i_c_n = add_transform(x_np_i_c)
 				x_np_i_c_n = x_np_i_c_n.detach().numpy()
-				x_np_tran.append( x_np_i_c_n )
 
+				# ###### one can visualize images by using this
+				# if i == 100:
+				# 	des1 = './show/pic/img_np_i_c_%s_%s_n.jpg' %(self.view, str(self.level))
+				# 	des2 = './show/pic/img_np_i_n.jpg'
+				# 	convert_img( x_np_i_c_n.transpose(1, 2, 0) ).save(des1)
+				# 	convert_img( add_transform(x_np_i).detach().numpy().transpose(1, 2, 0) ).save(des2)
+				# ######
+
+				x_np_tran.append( x_np_i_c_n )
 				x_l.append( add_transform(x_np_i).detach().numpy() )
 			x_np_tran = np.array(x_np_tran).astype(np.uint8)
 			ab = torch.from_numpy(x_np_tran).float().cuda()
