@@ -20,7 +20,7 @@ from util import adjust_learning_rate, AverageMeter
 from models.alexnet import MyAlexNetCMC
 from models.alexnet import MyAlexNetCMC_c
 from models.alexnet import MyAlexNetCMC_cc
-from models.resnet import MyResNetsCMC
+from models.resnet_beta import MyResNetsCMC
 from NCE.NCEAverage import NCEAverage
 from NCE.NCECriterion import NCECriterion
 from NCE.NCECriterion import NCESoftmaxLoss
@@ -29,6 +29,7 @@ from dataset import ImageFolderInstance
 #####
 import numpy as np
 from Resizer import resizer
+from corruption import create_augmentation
 #####
 
 try:
@@ -156,13 +157,15 @@ def get_train_loader(args):
 	else:
 		print('Use RGB images with %s level %s!' %(args.view, str(args.level)))
 		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-		normalize = transforms.Normalize(*NORM)
+		normalize_lst = lambda x: list(map(transforms.Normalize(*NORM), x))
+		data_augmentation = create_augmentation(args.view, args.level)
 		train_transform = transforms.Compose([
 			transforms.RandomCrop(32, padding=4), # maybe not necessary
 			# transforms.Resize(224),
 			transforms.RandomHorizontalFlip(),
 			transforms.ToTensor(),
-			# normalize
+			data_augmentation,
+			normalize_lst
 		])
 	
 	train_dataset = datasets.CIFAR10(root=args.data_folder,
@@ -185,7 +188,7 @@ def set_model(args, n_data):
 	if args.model == 'alexnet':
 		model = MyAlexNetCMC(args.feat_dim)
 	elif args.model.startswith('resnet'): # use this commonly
-		model = MyResNetsCMC(args.model, args.view, args.level)
+		model = MyResNetsCMC(args.model)
 	else:
 		raise ValueError('model not supported yet {}'.format(args.model))
 
@@ -230,12 +233,14 @@ def train(epoch, train_loader, model, contrast, criterion_l, criterion_ab, optim
 	for idx, (inputs, index) in enumerate(train_loader):
 		data_time.update(time.time() - end)
 
-		bsz = inputs.size(0)
-		inputs = inputs.float()
+		# bsz = inputs.size(0)
+		bsz = inputs[0].size(0)
+		# inputs = inputs.float()
 		if torch.cuda.is_available():
 			# index = index.cuda(async=True) # delete this temp
 			index = index.cuda()
-			inputs = inputs.cuda()
+			# inputs = inputs.cuda()
+			inputs = list(map( lambda x: x.float().cuda(), inputs ))
 
 		# ===================forward=====================
 		feat_l, feat_ab = model(inputs) # 128, 128

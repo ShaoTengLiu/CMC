@@ -36,8 +36,8 @@ convert_img = transforms.Compose([transforms.ToTensor(), transforms.ToPILImage()
 NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 normalize = transforms.Normalize(*NORM)
 add_transform = transforms.Compose([
-    transforms.ToTensor(),
-    normalize,
+	transforms.ToTensor(),
+	normalize,
 ])
 def conv3x3(in_planes, out_planes, stride=1):
 	"""3x3 convolution with padding"""
@@ -384,7 +384,7 @@ class ResNetV3(nn.Module):
 
 # ----------------------------------------------
 class ResNet_ttt(nn.Module):
-	def __init__(self, view='Lab', level=5):
+	def __init__(self, view='Lab_', level=5):
 		super(ResNet_ttt, self).__init__()
 		if view == 'Lab': # one can add 'YCbCr' later
 			self.l_to_ab = ResNetCifar(depth=26, channels=1)
@@ -398,54 +398,9 @@ class ResNet_ttt(nn.Module):
 	def forward(self, x, layer=7): # layer can be removed
 		if self.view == 'Lab':
 			l, ab = torch.split(x, [1, 2], dim=1)
-		elif self.view == 'various_noise':
-			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
-
-			x_l = []
-			x_np_tran = []
-			for i in range(x_np.shape[0]):
-				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, i, self.level) )
-				x_np_i_c_n = add_transform(x_np_i_c)
-				x_np_i_c_n = x_np_i_c_n.detach().numpy()
-
-				x_np_tran.append( x_np_i_c_n )
-
-				x_l.append( add_transform(x_np_i).detach().numpy() )
-			x_np_tran = np.array(x_np_tran).astype(np.uint8)
-			ab = torch.from_numpy(x_np_tran).float().cuda()
-
-			x_l = np.array(x_l).astype(np.uint8)
-			l = torch.from_numpy(x_l).float().cuda()
 		else:
-			x_np = x.cpu().detach().numpy() #(128, 3, 32, 32)
-
-			x_l = []
-			x_np_tran = []
-			for i in range(x_np.shape[0]):
-				x_np_i = convert_img( x_np[i].transpose(1, 2, 0) )
-				x_np_i_c = np.uint8( C_list()[self.view](x_np_i, self.level) )
-				
-				# x_np_i_c_n = x_np_i_c.transpose(2, 0, 1)
-				x_np_i_c_n = add_transform(x_np_i_c)
-				x_np_i_c_n = x_np_i_c_n.detach().numpy()
-
-				# ###### one can visualize images by using this
-				# if i == 100:
-				# 	des1 = './show/pic/img_np_i_c_%s_%s_n.jpg' %(self.view, str(self.level))
-				# 	des2 = './show/pic/img_np_i_n.jpg'
-				# 	convert_img( x_np_i_c_n.transpose(1, 2, 0) ).save(des1)
-				# 	convert_img( add_transform(x_np_i).detach().numpy().transpose(1, 2, 0) ).save(des2)
-				# ######
-
-				x_np_tran.append( x_np_i_c_n )
-				x_l.append( add_transform(x_np_i).detach().numpy() )
-			x_np_tran = np.array(x_np_tran).astype(np.uint8)
-			ab = torch.from_numpy(x_np_tran).float().cuda()
-
-			x_l = np.array(x_l).astype(np.uint8)
-			l = torch.from_numpy(x_l).float().cuda()
-		
+			l = x[0].float()
+			ab = x[1].float()
 		feat_l = self.l_to_ab(l)
 		feat_ab = self.ab_to_l(ab)
 		return feat_l, feat_ab
@@ -460,7 +415,7 @@ class MyResNetsCMC(nn.Module):
 		elif name.endswith('v3'):
 			self.encoder = ResNetV3(name[:-2])
 		elif 'ttt' in name:
-			self.encoder = ResNet_ttt(view = view, level=level)
+			self.encoder = ResNet_ttt()
 		else:
 			raise NotImplementedError('model not support: {}'.format(name))
 

@@ -5,11 +5,12 @@
 #  --view Lab
 
 
-CUDA_VISIBLE_DEVICES=2 python train_CMC.py --model resnet_ttt --batch_size 128 --num_workers 24 \
+CUDA_VISIBLE_DEVICES=7 python train_CMC_beta.py --model resnet_ttt --batch_size 128 --num_workers 24 \
  --feat_dim 64 \
  --data_folder ../data/myCIFAR-10-C/ \
- --model_path ./results/model_lc/ \
- --tb_path ./results/tb_lc/ \
+ --model_path ./results/beta/model/ \
+ --tb_path ./results/beta/tb/ \
+ --resume ./results/beta/model/memory_nce_16384_resnet_ttt_lr_0.03_decay_0.0001_bsz_128_view_contrast_level_5/ckpt_epoch_140.pth \
  --view contrast --level 5
 
 
