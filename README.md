@@ -1,7 +1,8 @@
 Expand the implementation of this paper:
 - CMC: Contrastive Multiview Coding ([Paper](http://arxiv.org/abs/1906.05849))
 
-
+**News**
+I have changed the way I add corruption. Now corruption is added in transform for datasets. You can use train_CMC_beta.py to implement it(I have changed the version in script.sh and etc).
 
 ## Installation
 
