@@ -19,8 +19,9 @@ from util import adjust_learning_rate, AverageMeter, accuracy
 
 from models.alexnet import MyAlexNetCMC, MyAlexNetCMC_cc
 from models.resnet_beta import MyResNetsCMC
-from models.LinearModel_beta import LinearClassifierAlexNet, LinearClassifierResNet
-
+### change this to test ll, knn and liblinear
+from models.LinearModel_beta_ll import LinearClassifierAlexNet, LinearClassifierResNet
+###
 import numpy as np
 #####
 from corruption import create_augmentation
@@ -60,6 +61,7 @@ def parse_option():
 
 	# add new views
 	parser.add_argument('--view', type=str, default='Lab')
+	parser.add_argument('--oracle', type=str, default='original')
 	# parser.add_argument('--corruption', type=str, default='original')
 	parser.add_argument('--level', type=int, default=5, help='The level of corruption')
 	# path definition
@@ -91,8 +93,10 @@ def parse_option():
 		opt.lr_decay_epochs.append(int(it))
 
 	opt.model_name = opt.model_path.split('/')[-2]
-	opt.model_name = 'calibrated_{}_bsz_{}_lr_{}_decay_{}'.format(opt.model_name, opt.batch_size, opt.learning_rate,
-																  opt.weight_decay)
+	# opt.model_name = 'calibrated_{}_bsz_{}_lr_{}_decay_{}'.format(opt.model_name, opt.batch_size, opt.learning_rate,
+	# 															  opt.weight_decay)
+	opt.model_name = 'calibrated_{}_bsz_{}_lr_{}_decay_{}_{}'.format(opt.model_name, opt.batch_size, opt.learning_rate,
+																opt.weight_decay, opt.oracle)
 
 	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
 	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.corruption)
@@ -147,6 +151,11 @@ def get_train_val_loader(args):
 				normalize,
 			])
 		)
+		if args.oracle != 'original':
+			train_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/train/%s_4_images.npy' %(args.oracle))
+			train_dataset.data = train_raw
+			val_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_4_images.npy' %(args.oracle))
+			val_dataset.data = val_raw
 	else:
 		print('Use RGB images with %s level %s!' %(args.view, str(args.level)))
 		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -255,7 +264,7 @@ def train(epoch, train_loader, model, classifier, criterion, optimizer, opt):
 		# ===================forward=====================
 		with torch.no_grad():
 			feat_l, feat_ab = model(input, opt.layer)
-			feat = torch.cat((feat_l.detach(), feat_l.detach()), dim=1)
+			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
 			# feat = feat_l.detach()
 
 		output = classifier(feat)
@@ -319,7 +328,7 @@ def validate(val_loader, model, classifier, criterion, opt):
 
 			# compute output
 			feat_l, feat_ab = model(input, opt.layer)
-			feat = torch.cat((feat_l.detach(), feat_l.detach()), dim=1)
+			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
 			# feat = feat_l.detach()
 			output = classifier(feat)
 			##### This may be not necessary

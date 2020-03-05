@@ -384,7 +384,7 @@ class ResNetV3(nn.Module):
 
 # ----------------------------------------------
 class ResNet_ttt(nn.Module):
-	def __init__(self, view='Lab_', level=5):
+	def __init__(self, view='Lab', level=5):
 		super(ResNet_ttt, self).__init__()
 		if view == 'Lab': # one can add 'YCbCr' later
 			self.l_to_ab = ResNetCifar(depth=26, channels=1)
@@ -397,7 +397,7 @@ class ResNet_ttt(nn.Module):
 
 	def forward(self, x, layer=7): # layer can be removed
 		if self.view == 'Lab':
-			l, ab = torch.split(x, [1, 2], dim=1)
+			l, ab = torch.split(x.float(), [1, 2], dim=1)
 		else:
 			l = x[0].float()
 			ab = x[1].float()

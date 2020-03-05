@@ -128,42 +128,42 @@ def clipped_zoom(img, zoom_factor):
 
 # /////////////// Distortions ///////////////
 
-def gaussian_noise(x, severity=1):
+def gaussian_noise(x, severity=5):
 	c = [0.04, 0.06, .08, .09, .10][severity - 1]
 
 	x = np.array(x) / 255.
 	return np.clip(x + np.random.normal(size=x.shape, scale=c), 0, 1) * 255
 
 
-def shot_noise(x, severity=1):
+def shot_noise(x, severity=5):
 	c = [500, 250, 100, 75, 50][severity - 1]
 
 	x = np.array(x) / 255.
 	return np.clip(np.random.poisson(x * c) / c, 0, 1) * 255
 
 
-def impulse_noise(x, severity=1):
+def impulse_noise(x, severity=5):
 	c = [.01, .02, .03, .05, .07][severity - 1]
 
 	x = sk.util.random_noise(np.array(x) / 255., mode='s&p', amount=c)
 	return np.clip(x, 0, 1) * 255
 
 
-def speckle_noise(x, severity=1):
+def speckle_noise(x, severity=5):
 	c = [.06, .1, .12, .16, .2][severity - 1]
 
 	x = np.array(x) / 255.
 	return np.clip(x + x * np.random.normal(size=x.shape, scale=c), 0, 1) * 255
 
 
-def gaussian_blur(x, severity=1):
+def gaussian_blur(x, severity=5):
 	c = [.4, .6, 0.7, .8, 1][severity - 1]
 
 	x = gaussian(np.array(x) / 255., sigma=c, multichannel=True)
 	return np.clip(x, 0, 1) * 255
 
 
-def glass_blur(x, severity=1):
+def glass_blur(x, severity=5):
 	# sigma, max_delta, iterations
 	c = [(0.05,1,1), (0.25,1,1), (0.4,1,1), (0.25,1,2), (0.4,1,2)][severity - 1]
 
@@ -181,7 +181,7 @@ def glass_blur(x, severity=1):
 	return np.clip(gaussian(x / 255., sigma=c[0], multichannel=True), 0, 1) * 255
 
 
-def defocus_blur(x, severity=1):
+def defocus_blur(x, severity=5):
 	c = [(0.3, 0.4), (0.4, 0.5), (0.5, 0.6), (1, 0.2), (1.5, 0.1)][severity - 1]
 
 	x = np.array(x) / 255.
@@ -195,7 +195,7 @@ def defocus_blur(x, severity=1):
 	return np.clip(channels, 0, 1) * 255
 
 
-def motion_blur(x, severity=1):
+def motion_blur(x, severity=5):
 	c = [(6,1), (6,1.5), (6,2), (8,2), (9,2.5)][severity - 1]
 
 	output = BytesIO()
@@ -213,7 +213,7 @@ def motion_blur(x, severity=1):
 		return np.clip(np.array([x, x, x]).transpose((1, 2, 0)), 0, 255)
 
 
-def zoom_blur(x, severity=1):
+def zoom_blur(x, severity=5):
 	c = [np.arange(1, 1.06, 0.01), np.arange(1, 1.11, 0.01), np.arange(1, 1.16, 0.01),
 		 np.arange(1, 1.21, 0.01), np.arange(1, 1.26, 0.01)][severity - 1]
 
@@ -226,7 +226,7 @@ def zoom_blur(x, severity=1):
 	return np.clip(x, 0, 1) * 255
 
 
-def fog(x, severity=1):
+def fog(x, severity=5):
 	c = [(.2,3), (.5,3), (0.75,2.5), (1,2), (1.5,1.75)][severity - 1]
 
 	x = np.array(x) / 255.
@@ -235,7 +235,7 @@ def fog(x, severity=1):
 	return np.clip(x * max_val / (max_val + c[0]), 0, 1) * 255
 
 
-def frost(x, severity=1):
+def frost(x, severity=5):
 	c = [(1, 0.2), (1, 0.3), (0.9, 0.4), (0.85, 0.4), (0.75, 0.45)][severity - 1]
 	idx = np.random.randint(5)
 	base_path = '../robustness/ImageNet-C/create_c'
@@ -249,7 +249,7 @@ def frost(x, severity=1):
 	return np.clip(c[0] * np.array(x) + c[1] * frost, 0, 255)
 
 
-def snow(x, severity=1):
+def snow(x, severity=5):
 	c = [(0.1,0.2,1,0.6,8,3,0.95),
 		 (0.1,0.2,1,0.5,10,4,0.9),
 		 (0.15,0.3,1.75,0.55,10,4,0.9),
@@ -277,7 +277,7 @@ def snow(x, severity=1):
 	return np.clip(x + snow_layer + np.rot90(snow_layer, k=2), 0, 1) * 255
 
 
-def spatter(x, severity=1):
+def spatter(x, severity=5):
 	c = [(0.62,0.1,0.7,0.7,0.5,0),
 		 (0.65,0.1,0.8,0.7,0.5,0),
 		 (0.65,0.3,1,0.69,0.5,0),
@@ -332,7 +332,7 @@ def spatter(x, severity=1):
 		return np.clip(x + color, 0, 1) * 255
 
 
-def contrast(x, severity=1):
+def contrast(x, severity=5):
 	c = [.75, .5, .4, .3, 0.15][severity - 1]
 
 	x = np.array(x) / 255.
@@ -340,7 +340,7 @@ def contrast(x, severity=1):
 	return np.clip((x - means) * c + means, 0, 1) * 255
 
 
-def brightness(x, severity=1):
+def brightness(x, severity=5):
 	c = [.05, .1, .15, .2, .3][severity - 1]
 
 	x = np.array(x) / 255.
@@ -351,7 +351,7 @@ def brightness(x, severity=1):
 	return np.clip(x, 0, 1) * 255
 
 
-def saturate(x, severity=1):
+def saturate(x, severity=5):
 	c = [(0.3, 0), (0.1, 0), (1.5, 0), (2, 0.1), (2.5, 0.2)][severity - 1]
 
 	x = np.array(x) / 255.
@@ -362,7 +362,7 @@ def saturate(x, severity=1):
 	return np.clip(x, 0, 1) * 255
 
 
-def jpeg_compression(x, severity=1):
+def jpeg_compression(x, severity=5):
 	c = [80, 65, 58, 50, 40][severity - 1]
 
 	output = BytesIO()
@@ -372,7 +372,7 @@ def jpeg_compression(x, severity=1):
 	return x
 
 
-def pixelate(x, severity=1):
+def pixelate(x, severity=5):
 	c = [0.95, 0.9, 0.85, 0.75, 0.65][severity - 1]
 
 	x = x.resize((int(32 * c), int(32 * c)), PILImage.BOX)
@@ -382,7 +382,7 @@ def pixelate(x, severity=1):
 
 
 # mod of https://gist.github.com/erniejunior/601cdf56d2b424757de5
-def elastic_transform(image, severity=1):
+def elastic_transform(image, severity=5):
 	IMSIZE = 32
 	c = [(IMSIZE*0, IMSIZE*0, IMSIZE*0.08),
 		 (IMSIZE*0.05, IMSIZE*0.2, IMSIZE*0.07),
@@ -466,6 +466,18 @@ def gaussian_noise_pixelate(image, severity=5):
 		return gaussian_noise(image, severity)
 	else:
 		return pixelate(image, severity)
+
+def mix_trainset(view, level=5):
+	views = view.split('-')
+	i= random.randint(0,len(views)-1)
+	return C_list()[views[i]]
+
+def mix(view, level=5):
+	views = view.split('+')
+	func = lambda x, y: x
+	for v in views:
+		func = lambda x, y: v( func(x, y), y)
+	return func
 # /////////////// End Distortions ///////////////
 
 import collections
@@ -496,17 +508,22 @@ def C_list():
 	d['scale'] = scale ###
 	d['various_noise'] = various_noise ###
 
-	d['gaussian_noise+pixelate'] = lambda x,y: gaussian_noise( pixelate(x,y),y )
-	d['scale+gaussian_noise'] = lambda x,y: scale( gaussian_noise(x,y),y )
+	# d['gaussian_noise+pixelate'] = lambda x,y: gaussian_noise( pixelate(x,y),y )
+	# d['scale+gaussian_noise'] = lambda x,y: scale( gaussian_noise(x,y),y )
 
-	d['gaussian_noise_pixelate'] = gaussian_noise_pixelate
+	# d['gaussian_noise-pixelate'] = mix_trainset('gaussian_noise-pixelate')
 
 	return d
 
 def create_augmentation(view, level):
 	convert_img = trn.ToPILImage()
-	corruption = lambda clean_img: C_list()[view](clean_img, level)
+	if '-' in view:
+		corruption = mix_trainset(view, level)
+	elif '+' in view:
+		corruption = mix(view, level)
+	else:
+		corruption = lambda clean_img, severity: C_list()[view](clean_img, severity)
 	def func(img):
-		res = [ img, trn.ToTensor()(corruption(convert_img(img))) ]
+		res = [ img, trn.ToTensor()(corruption(convert_img(img), level)) ]
 		return res
 	return func

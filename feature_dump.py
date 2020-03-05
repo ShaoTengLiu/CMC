@@ -19,14 +19,14 @@ from util import adjust_learning_rate, AverageMeter, accuracy
 
 from models.alexnet import MyAlexNetCMC, MyAlexNetCMC_cc
 from models.resnet_beta import MyResNetsCMC
+### change this to test ll, knn and liblinear
 from models.LinearModel_beta import LinearClassifierAlexNet, LinearClassifierResNet
-
+###
 import numpy as np
-# from spawn import spawn
-from PIL import Image
 #####
 from corruption import create_augmentation
 #####
+# from spawn import spawn
 
 def parse_option():
 
@@ -54,6 +54,7 @@ def parse_option():
 	# model definition
 	parser.add_argument('--model', type=str, default='alexnet')
 	parser.add_argument('--model_path', type=str, default=None, help='the model to test')
+	parser.add_argument('--feat_path', type=str, default=None, help='the place to save dumped features')
 	parser.add_argument('--layer', type=int, default=6, help='which layer to evaluate')
 
 	# dataset
@@ -61,11 +62,14 @@ def parse_option():
 
 	# add new views
 	parser.add_argument('--view', type=str, default='Lab')
-	parser.add_argument('--level', type=int, default=5, help='The level of model')
 	parser.add_argument('--corruption', type=str, default='original')
+	parser.add_argument('--level', type=int, default=5, help='The level of corruption')
 	parser.add_argument('--test_level', type=int, default=5, help='The level of corruption')
 	# path definition
 	parser.add_argument('--data_folder', type=str, default=None, help='path to data')
+	parser.add_argument('--save_path', type=str, default=None, help='path to save linear classifier')
+	parser.add_argument('--tb_path', type=str, default=None, help='path to tensorboard')
+
 	# data crop threshold
 	parser.add_argument('--crop_low', type=float, default=0.2, help='low area in crop')
 
@@ -76,11 +80,6 @@ def parse_option():
 	parser.add_argument('--gpu', default=None, type=int, help='GPU id to use.')
 
 	opt = parser.parse_args()
-	
-	#####
-	opt.model_path = opt.model_path.replace('augmentation', opt.view)
-	opt.resume = opt.resume.replace('augmentation', opt.view)
-	#####
 
 	if opt.dataset == 'imagenet':
 		if 'alexnet' not in opt.model:
@@ -96,8 +95,9 @@ def parse_option():
 																  opt.weight_decay)
 
 	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
-	opt.model_name = '{}_view_{}'.format(opt.model_name, opt.corruption)
-	# one may change this view into corruption to make the name more reasonable
+	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.corruption)
+	# Corruption is not useful when training linear classifier
+
 
 	if opt.dataset == 'imagenet100':
 		opt.n_label = 100
@@ -106,13 +106,11 @@ def parse_option():
 	if opt.dataset == 'cifar':
 		opt.n_label = 10
 
+	opt.feat_folder = os.path.join(opt.feat_path, 'tr_'+opt.view+'.npy')
+	opt.feat_folder_val = os.path.join(opt.feat_path, 'val_'+opt.view+'_'+opt.corruption+'.npy')
 	return opt
 
-def get_val_loader(args):
-	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
-					'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
-					'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression','scale']
-	print('Use %s %s!' %(args.view, str(args.level)))
+def get_train_val_loader(args):
 	if args.view == 'Lab' or args.view == 'YCbCr':
 		if args.view == 'Lab':
 			mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
@@ -123,28 +121,46 @@ def get_val_loader(args):
 			std = [109.500, 111.855, 111.964]
 			color_transfer = RGB2YCbCr()
 		normalize = transforms.Normalize(mean=mean, std=std)
-
-		te_transform = transforms.Compose([
-			color_transfer,
-			transforms.ToTensor(),
-			normalize,
-		])
+		train_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=True,
+			transform=transforms.Compose([
+				# transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.0)),
+				transforms.RandomCrop(32, padding=4), # maybe not necessary
+				transforms.RandomHorizontalFlip(),
+				color_transfer,
+				transforms.ToTensor(),
+				normalize,
+			])
+		)
 		val_dataset = datasets.CIFAR10(
 			root=args.data_folder,
 			train=False,
-			transform=te_transform
+			transform=transforms.Compose([
+				color_transfer,
+				transforms.ToTensor(),
+				normalize,
+			])
 		)
-		if args.corruption in common_corruptions:
-			print('Test on %s!' %(args.corruption))
-			if args.corruption == 'scale':
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %('upsample', str(args.test_level)))
-			else:
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
+		if args.corruption != 'original':
+			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level-1)))
 			val_dataset.data = teset_raw
 	else:
+		print('Use RGB images with %s level %s!' %(args.view, str(args.level)))
 		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 		normalize_lst = lambda x: list(map(transforms.Normalize(*NORM), x))
 		data_augmentation = create_augmentation(args.view, args.level)
+		train_transform = transforms.Compose([
+			transforms.RandomCrop(32, padding=4), # maybe not necessary
+			# transforms.Resize(224),
+			transforms.RandomHorizontalFlip(),
+			transforms.ToTensor(),
+			data_augmentation,
+			normalize_lst
+		])
+		train_dataset = datasets.CIFAR10(root=args.data_folder,
+			train=True, download=True, transform=train_transform)
+
 		val_transform = transforms.Compose([
 			transforms.ToTensor(),
 			data_augmentation,
@@ -153,21 +169,20 @@ def get_val_loader(args):
 		val_dataset = datasets.CIFAR10(root=args.data_folder,
 			train=False, download=True, transform=val_transform)
 
-		if args.corruption in common_corruptions:
-			print('Test on %s!' %(args.corruption))
-			if args.corruption == 'scale':
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %('upsample', str(args.test_level)))
-			else:
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
-			val_dataset.data = teset_raw
-
+	print('number of train: {}'.format(len(train_dataset)))
 	print('number of val: {}'.format(len(val_dataset)))
+
+	train_sampler = None
+
+	train_loader = torch.utils.data.DataLoader(
+		train_dataset, batch_size=args.batch_size, shuffle=False,
+		num_workers=args.num_workers, pin_memory=True, sampler=train_sampler)
 
 	val_loader = torch.utils.data.DataLoader(
 		val_dataset, batch_size=args.batch_size, shuffle=False,
 		num_workers=args.num_workers, pin_memory=True)
 
-	return val_loader
+	return train_loader, val_loader, train_sampler
 
 def set_model(args):
 	if args.model.startswith('alexnet'):
@@ -200,58 +215,68 @@ def set_model(args):
 
 	model.eval()
 
-	return model, classifier
+	criterion = nn.CrossEntropyLoss().cuda(args.gpu)
 
-def validate(val_loader, model, classifier, opt):
+	return model, classifier, criterion
+
+def get_feature(train_loader, val_loader, model, opt):
 	"""
-	evaluation
+	one epoch training
 	"""
+	model.eval()
+
 	batch_time = AverageMeter()
+	data_time = AverageMeter()
+	losses = AverageMeter()
 	top1 = AverageMeter()
 	top5 = AverageMeter()
 
-	# switch to evaluate mode
-	model.eval()
-	classifier.eval()
-
-	with torch.no_grad():
-		end = time.time()
-		for idx, (input, target) in enumerate(val_loader):
-			# input = input.float()
-			if opt.gpu is not None:
-				input = list(map( lambda x: x.float().cuda(opt.gpu, non_blocking=True), input ))
-			target = target.cuda(opt.gpu, non_blocking=True)
-			# compute output
+	end = time.time()
+	dump_feature_tr = None
+	tr_label = None
+	for idx, (input, target) in enumerate(train_loader):
+		# measure data loading time
+		data_time.update(time.time() - end)
+		# input = input.float()
+		if opt.gpu is not None:
+			# input = input.cuda(opt.gpu, non_blocking=True)
+			input = list(map( lambda x: x.float().cuda(opt.gpu, non_blocking=True), input ))
+		target = target.cuda(opt.gpu, non_blocking=True)
+		# ===================forward=====================
+		with torch.no_grad():
 			feat_l, feat_ab = model(input, opt.layer)
-			# feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
-			feat = feat_l.detach()
-			output = classifier(feat)
-			##### This may be not necessary
-			target = target.long()
+			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
+			# feat = feat_l.detach()
+		if idx == 0:
+			dump_feature_tr = feat.cpu().detach().numpy()
+			tr_label = target.cpu().detach().numpy()
+		else:
+			dump_feature_tr = np.concatenate((dump_feature_tr,feat.cpu().detach().numpy()),axis=0)
+			tr_label = np.concatenate((tr_label,target.cpu().detach().numpy()),axis=0)
+	
+	dump_feature_val = None
+	val_label = None
+	for idx, (input, target) in enumerate(val_loader):
+		# measure data loading time
+		data_time.update(time.time() - end)
+		# input = input.float()
+		if opt.gpu is not None:
+			# input = input.cuda(opt.gpu, non_blocking=True)
+			input = list(map( lambda x: x.float().cuda(opt.gpu, non_blocking=True), input ))
+		target = target.cuda(opt.gpu, non_blocking=True)
+		# ===================forward=====================
+		with torch.no_grad():
+			feat_l, feat_ab = model(input, opt.layer)
+			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
+			# feat = feat_l.detach()
+		if idx == 0:
+			dump_feature_val = feat.cpu().detach().numpy()
+			val_label = target.cpu().detach().numpy()
+		else:
+			dump_feature_val = np.concatenate((dump_feature_val,feat.cpu().detach().numpy()),axis=0)
+			val_label = np.concatenate((val_label,target.cpu().detach().numpy()),axis=0)
 
-			# measure accuracy and record loss
-			acc1, acc5 = accuracy(output, target, topk=(1, 5))
-			# top1.update(acc1[0], input.size(0))
-			# top5.update(acc5[0], input.size(0))
-			top1.update(acc1[0], input[0].size(0))
-			top5.update(acc5[0], input[0].size(0))
-
-			# measure elapsed time
-			batch_time.update(time.time() - end)
-			end = time.time()
-			break # temp
-			# if idx % opt.print_freq == 0:
-			# 	print('Test: [{0}/{1}]\t'
-			# 		  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-			# 		  'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-			# 		  'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-			# 		   idx, len(val_loader), batch_time=batch_time,
-			# 		   top1=top1, top5=top5))
-
-		print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-			  .format(top1=top1, top5=top5))
-
-	return top1.avg, top5.avg
+	return dump_feature_tr, tr_label, dump_feature_val, val_label
 
 def main():
 	global best_acc1
@@ -263,31 +288,19 @@ def main():
 		print("Use GPU: {} for training".format(args.gpu))
 
 	# set the data loader
-	val_loader = get_val_loader(args)
+	train_loader, val_loader, train_sampler = get_train_val_loader(args)
 	# set the model
-	model, classifier = set_model(args)
+	model, classifier, criterion = set_model(args)
 
 	cudnn.benchmark = True
 
-	# optionally resume linear classifier
-	args.start_epoch = 1
-	if args.resume:
-		if os.path.isfile(args.resume):
-			print("=> loading checkpoint '{}'".format(args.resume))
-			checkpoint = torch.load(args.resume, map_location='cpu')
-			classifier.load_state_dict(checkpoint['classifier'])
-			del checkpoint
-			torch.cuda.empty_cache()
-		else:
-			print("=> no checkpoint found at '{}'".format(args.resume))
-
-	# routine
-	for epoch in range(args.start_epoch, args.epochs + 1):
-		print("==> testing...")
-		test_acc, test_acc5 = validate(val_loader, model, classifier, args)
-		break
-		# tensorboard logger
-		# pass
+	print("==> dump feature...")
+	tr_feat, tr_label, val_feat, val_label = get_feature(train_loader, val_loader, model, args)
+	# feat, label = get_feature(train_loader, model, args)
+	# np.save(args.feat_folder, tr_feat)
+	np.save(args.feat_folder_val, val_feat)
+	# np.save('results/feat_from_model/tr_label.npy', tr_label)
+	# np.save('results/feat_from_model/val_label.npy', val_label)
 
 if __name__ == '__main__':
 	best_acc1 = 0

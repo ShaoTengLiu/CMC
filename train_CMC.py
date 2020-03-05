@@ -89,6 +89,7 @@ def parse_option():
 	# add new views
 	parser.add_argument('--view', type=str, default='Lab')
 	parser.add_argument('--level', type=int, default='5')
+	parser.add_argument('--oracle', type=str, default='original')
 
 	# mixed precision setting
 	parser.add_argument('--amp', action='store_true', help='using mixed precision')
@@ -118,6 +119,7 @@ def parse_option():
 		opt.model_name = '{}_amp_{}'.format(opt.model_name, opt.opt_level)
 
 	opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
+	opt.model_name = '{}_oracle_{}'.format(opt.model_name, opt.oracle)
 	if opt.view in common_corruptions:
 		opt.model_name = '{}_level_{}'.format(opt.model_name, str(opt.level))
 
@@ -168,6 +170,10 @@ def get_train_loader(args):
 	train_dataset = datasets.CIFAR10(root=args.data_folder,
 		train=True, download=True, transform=train_transform)
 	train_sampler = None
+
+	if args.oracle != 'original':
+		train_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/train/%s_4_images.npy' %(args.oracle))
+		train_dataset.data = train_raw
 
 	# train loader
 	train_loader = torch.utils.data.DataLoader(
