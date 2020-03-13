@@ -18,15 +18,12 @@ from dataset import RGB2Lab, RGB2YCbCr
 from util import adjust_learning_rate, AverageMeter, accuracy
 
 from models.alexnet import MyAlexNetCMC, MyAlexNetCMC_cc
-from models.resnet_beta import MyResNetsCMC
-from models.LinearModel_beta import LinearClassifierAlexNet, LinearClassifierResNet_L, LinearClassifierResNet_Lab
+from models.resnet import MyResNetsCMC
+from models.LinearModel import LinearClassifierAlexNet, LinearClassifierResNet
 
 import numpy as np
 # from spawn import spawn
 from PIL import Image
-#####
-from corruption import create_augmentation
-#####
 
 def parse_option():
 
@@ -64,7 +61,6 @@ def parse_option():
 	parser.add_argument('--level', type=int, default=5, help='The level of model')
 	parser.add_argument('--corruption', type=str, default='original')
 	parser.add_argument('--test_level', type=int, default=5, help='The level of corruption')
-	parser.add_argument('--feat_version', type=str, default='Lab')
 	# path definition
 	parser.add_argument('--data_folder', type=str, default=None, help='path to data')
 	# data crop threshold
@@ -77,11 +73,6 @@ def parse_option():
 	parser.add_argument('--gpu', default=None, type=int, help='GPU id to use.')
 
 	opt = parser.parse_args()
-	
-	#####
-	opt.model_path = opt.model_path.replace('augment', opt.view)
-	opt.resume = opt.resume.replace('augment', opt.view)
-	#####
 
 	if opt.dataset == 'imagenet':
 		if 'alexnet' not in opt.model:
@@ -111,9 +102,9 @@ def parse_option():
 
 def get_val_loader(args):
 	common_corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur',
-					'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
-					'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression','scale']
-	print('Use %s %s!' %(args.view, str(args.level)))
+							'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
+							'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+	print('Use %s!' %(args.view))
 	if args.view == 'Lab' or args.view == 'YCbCr':
 		if args.view == 'Lab':
 			mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
@@ -137,29 +128,24 @@ def get_val_loader(args):
 		)
 		if args.corruption in common_corruptions:
 			print('Test on %s!' %(args.corruption))
-			if args.corruption == 'scale':
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %('upsample', str(args.test_level)))
-			else:
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
+			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
+			teset_raw = color_transfer( Image.fromarray(teset_raw.astype(np.uint8)) )
 			val_dataset.data = teset_raw
 	else:
 		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-		normalize_lst = lambda x: list(map(transforms.Normalize(*NORM), x))
-		data_augmentation = create_augmentation(args.view, args.level)
-		val_transform = transforms.Compose([
+		normalize = transforms.Normalize(*NORM)
+		te_transform = transforms.Compose([
 			transforms.ToTensor(),
-			data_augmentation,
-			normalize_lst
+			# normalize,
 		])
-		val_dataset = datasets.CIFAR10(root=args.data_folder,
-			train=False, download=True, transform=val_transform)
-
+		val_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=False,
+			transform=te_transform
+		)
 		if args.corruption in common_corruptions:
 			print('Test on %s!' %(args.corruption))
-			if args.corruption == 'scale':
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %('upsample', str(args.test_level)))
-			else:
-				teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
+			teset_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_%s_images.npy' %(args.corruption, str(args.test_level - 1)))
 			val_dataset.data = teset_raw
 
 	print('number of val: {}'.format(len(val_dataset)))
@@ -177,16 +163,13 @@ def set_model(args):
 	elif args.model.startswith('resnet'):
 		model = MyResNetsCMC(name=args.model, view=args.view, level=args.level)
 		if args.model.endswith('v1'):
-			classifier = LinearClassifierResNet_Lab(args.layer, args.n_label, 'avg', 1)
+			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 1)
 		elif args.model.endswith('v2'):
-			classifier = LinearClassifierResNet_Lab(args.layer, args.n_label, 'avg', 2)
+			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 2)
 		elif args.model.endswith('v3'):
-			classifier = LinearClassifierResNet_Lab(args.layer, args.n_label, 'avg', 4)
+			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 4)
 		elif 'ttt' in args.model:
-			if args.feat_version == 'L':
-				classifier = LinearClassifierResNet_L(10, args.n_label, 'avg', 1)
-			else:
-				classifier = LinearClassifierResNet_Lab(10, args.n_label, 'avg', 1)
+			classifier = LinearClassifierResNet(10, args.n_label, 'avg', 1)
 		else:
 			raise NotImplementedError('model not supported {}'.format(args.model))
 	else:
@@ -221,28 +204,21 @@ def validate(val_loader, model, classifier, opt):
 	with torch.no_grad():
 		end = time.time()
 		for idx, (input, target) in enumerate(val_loader):
-			# input = input.float()
+			input = input.float()
 			if opt.gpu is not None:
-				input = list(map( lambda x: x.float().cuda(opt.gpu, non_blocking=True), input ))
+				input = input.cuda(opt.gpu, non_blocking=True)
 			target = target.cuda(opt.gpu, non_blocking=True)
 			# compute output
 			feat_l, feat_ab = model(input, opt.layer)
-			if opt.feat_version == 'Lab':
-				feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
-			elif opt.feat_version == 'LL':
-				feat = torch.cat((feat_l.detach(), feat_l.detach()), dim=1)
-			else:
-				feat = feat_l.detach()
+			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
 			output = classifier(feat)
 			##### This may be not necessary
 			target = target.long()
 
 			# measure accuracy and record loss
 			acc1, acc5 = accuracy(output, target, topk=(1, 5))
-			# top1.update(acc1[0], input.size(0))
-			# top5.update(acc5[0], input.size(0))
-			top1.update(acc1[0], input[0].size(0))
-			top5.update(acc5[0], input[0].size(0))
+			top1.update(acc1[0], input.size(0))
+			top5.update(acc5[0], input.size(0))
 
 			# measure elapsed time
 			batch_time.update(time.time() - end)
@@ -293,9 +269,9 @@ def main():
 	for epoch in range(args.start_epoch, args.epochs + 1):
 		print("==> testing...")
 		test_acc, test_acc5 = validate(val_loader, model, classifier, args)
-		break
+
 		# tensorboard logger
-		# pass
+		pass
 
 if __name__ == '__main__':
 	best_acc1 = 0

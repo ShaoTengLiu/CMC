@@ -384,7 +384,7 @@ class ResNetV3(nn.Module):
 
 # ----------------------------------------------
 class ResNet_ttt(nn.Module):
-	def __init__(self, view='Lab', level=5):
+	def __init__(self, view='Lab_', level=5):
 		super(ResNet_ttt, self).__init__()
 		if view == 'Lab': # one can add 'YCbCr' later
 			self.l_to_ab = ResNetCifar(depth=26, channels=1)

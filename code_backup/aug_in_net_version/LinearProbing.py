@@ -18,14 +18,10 @@ from dataset import RGB2Lab, RGB2YCbCr
 from util import adjust_learning_rate, AverageMeter, accuracy
 
 from models.alexnet import MyAlexNetCMC, MyAlexNetCMC_cc
-from models.resnet_beta import MyResNetsCMC
-### change this to test ll, knn and liblinear
-from models.LinearModel_beta import LinearClassifierAlexNet, LinearClassifierResNet_L, LinearClassifierResNet_Lab
-###
+from models.resnet import MyResNetsCMC
+from models.LinearModel import LinearClassifierAlexNet, LinearClassifierResNet
+
 import numpy as np
-#####
-from corruption import create_augmentation
-#####
 # from spawn import spawn
 
 def parse_option():
@@ -61,8 +57,6 @@ def parse_option():
 
 	# add new views
 	parser.add_argument('--view', type=str, default='Lab')
-	parser.add_argument('--oracle', type=str, default='original')
-	parser.add_argument('--feat_version', type=str, default='Lab')
 	# parser.add_argument('--corruption', type=str, default='original')
 	parser.add_argument('--level', type=int, default=5, help='The level of corruption')
 	# path definition
@@ -81,10 +75,6 @@ def parse_option():
 
 	opt = parser.parse_args()
 
-	##
-	opt.model_path = opt.model_path.replace('augment', opt.view)
-	##
-
 	if (opt.data_folder is None) or (opt.save_path is None) or (opt.tb_path is None):
 		raise ValueError('one or more of the folders is None: data_folder | save_path | tb_path')
 
@@ -98,10 +88,8 @@ def parse_option():
 		opt.lr_decay_epochs.append(int(it))
 
 	opt.model_name = opt.model_path.split('/')[-2]
-	# opt.model_name = 'calibrated_{}_bsz_{}_lr_{}_decay_{}'.format(opt.model_name, opt.batch_size, opt.learning_rate,
-	# 															  opt.weight_decay)
-	opt.model_name = 'calibrated_{}_bsz_{}_lr_{}_decay_{}_{}'.format(opt.model_name, opt.batch_size, opt.learning_rate,
-																opt.weight_decay, opt.oracle)
+	opt.model_name = 'calibrated_{}_bsz_{}_lr_{}_decay_{}'.format(opt.model_name, opt.batch_size, opt.learning_rate,
+																  opt.weight_decay)
 
 	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.view)
 	# opt.model_name = '{}_view_{}'.format(opt.model_name, opt.corruption)
@@ -156,41 +144,25 @@ def get_train_val_loader(args):
 				normalize,
 			])
 		)
-		if args.oracle != 'original':
-			if args.oracle != 'scale':
-				train_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/train/%s_4_images.npy' %(args.oracle))
-				train_dataset.data = train_raw
-				val_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/%s_4_images.npy' %(args.oracle))
-				val_dataset.data = val_raw
-			else:
-				train_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/train/upsample_4_images.npy')
-				train_dataset.data = train_raw
-				val_raw = np.load(args.data_folder + '/CIFAR-10-C-trainval/val/upsample_4_images.npy')
-				val_dataset.data = val_raw
 	else:
-		print('Use RGB images with %s level %s!' %(args.view, str(args.level)))
-		NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-		normalize_lst = lambda x: list(map(transforms.Normalize(*NORM), x))
-		data_augmentation = create_augmentation(args.view, args.level)
-		train_transform = transforms.Compose([
-			transforms.RandomCrop(32, padding=4), # maybe not necessary
-			# transforms.Resize(224),
-			transforms.RandomHorizontalFlip(),
-			transforms.ToTensor(),
-			data_augmentation,
-			normalize_lst
-		])
-		train_dataset = datasets.CIFAR10(root=args.data_folder,
-			train=True, download=True, transform=train_transform)
-
-		val_transform = transforms.Compose([
-			transforms.ToTensor(),
-			data_augmentation,
-			normalize_lst
-		])
-		val_dataset = datasets.CIFAR10(root=args.data_folder,
-			train=False, download=True, transform=val_transform)
-
+		print('Use RGB images with %s!' %(args.view))
+		train_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=True,
+			transform=transforms.Compose([
+				# transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.0)),
+				transforms.RandomCrop(32, padding=4), # maybe not necessary
+				transforms.RandomHorizontalFlip(),
+				transforms.ToTensor()
+			])
+		)
+		val_dataset = datasets.CIFAR10(
+			root=args.data_folder,
+			train=False,
+			transform=transforms.Compose([
+				transforms.ToTensor()
+			])
+		)
 	print('number of train: {}'.format(len(train_dataset)))
 	print('number of val: {}'.format(len(val_dataset)))
 
@@ -213,16 +185,13 @@ def set_model(args):
 	elif args.model.startswith('resnet'):
 		model = MyResNetsCMC(name=args.model, view=args.view, level=args.level)
 		if args.model.endswith('v1'):
-			classifier = LinearClassifierResNet_Lab(args.layer, args.n_label, 'avg', 1)
+			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 1)
 		elif args.model.endswith('v2'):
-			classifier = LinearClassifierResNet_Lab(args.layer, args.n_label, 'avg', 2)
+			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 2)
 		elif args.model.endswith('v3'):
-			classifier = LinearClassifierResNet_Lab(args.layer, args.n_label, 'avg', 4)
+			classifier = LinearClassifierResNet(args.layer, args.n_label, 'avg', 4)
 		elif 'ttt' in args.model:
-			if args.feat_version == 'L':
-				classifier = LinearClassifierResNet_L(10, args.n_label, 'avg', 1)
-			else:
-				classifier = LinearClassifierResNet_Lab(10, args.n_label, 'avg', 1)
+			classifier = LinearClassifierResNet(10, args.n_label, 'avg', 1)
 		else:
 			raise NotImplementedError('model not supported {}'.format(args.model))
 	else:
@@ -269,21 +238,15 @@ def train(epoch, train_loader, model, classifier, criterion, optimizer, opt):
 		# measure data loading time
 		data_time.update(time.time() - end)
 
-		# input = input.float()
+		input = input.float()
 		if opt.gpu is not None:
-			# input = input.cuda(opt.gpu, non_blocking=True)
-			input = list(map( lambda x: x.float().cuda(opt.gpu, non_blocking=True), input ))
+			input = input.cuda(opt.gpu, non_blocking=True)
 		target = target.cuda(opt.gpu, non_blocking=True)
 
 		# ===================forward=====================
 		with torch.no_grad():
 			feat_l, feat_ab = model(input, opt.layer)
-			if opt.feat_version == 'L':
-				feat = feat_l.detach()
-			elif opt.feat_version == 'LL':
-				feat = torch.cat((feat_l.detach(), feat_l.detach()), dim=1)
-			else:
-				feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
+			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
 
 		output = classifier(feat)
 		##### This may be not neccessary
@@ -292,12 +255,9 @@ def train(epoch, train_loader, model, classifier, criterion, optimizer, opt):
 		loss = criterion(output, target)
 
 		acc1, acc5 = accuracy(output, target, topk=(1, 5))
-		# losses.update(loss.item(), input.size(0))
-		# top1.update(acc1[0], input.size(0))
-		# top5.update(acc5[0], input.size(0))
-		losses.update(loss.item(), input[0].size(0))
-		top1.update(acc1[0], input[0].size(0))
-		top5.update(acc5[0], input[0].size(0))
+		losses.update(loss.item(), input.size(0))
+		top1.update(acc1[0], input.size(0))
+		top5.update(acc5[0], input.size(0))
 
 		# ===================backward=====================
 		optimizer.zero_grad()
@@ -338,21 +298,14 @@ def validate(val_loader, model, classifier, criterion, opt):
 	with torch.no_grad():
 		end = time.time()
 		for idx, (input, target) in enumerate(val_loader):
-			# input = input.float()
+			input = input.float()
 			if opt.gpu is not None:
-				# input = input.cuda(opt.gpu, non_blocking=True)
-				input = list(map( lambda x: x.float().cuda(opt.gpu, non_blocking=True), input ))
+				input = input.cuda(opt.gpu, non_blocking=True)
 			target = target.cuda(opt.gpu, non_blocking=True)
 
 			# compute output
 			feat_l, feat_ab = model(input, opt.layer)
-			if opt.feat_version == 'L':
-				feat = feat_l.detach()
-			elif opt.feat_version == 'LL':
-				feat = torch.cat((feat_l.detach(), feat_l.detach()), dim=1)
-			else:
-				feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
-			
+			feat = torch.cat((feat_l.detach(), feat_ab.detach()), dim=1)
 			output = classifier(feat)
 			##### This may be not necessary
 			target = target.long()
@@ -361,12 +314,9 @@ def validate(val_loader, model, classifier, criterion, opt):
 
 			# measure accuracy and record loss
 			acc1, acc5 = accuracy(output, target, topk=(1, 5))
-			# losses.update(loss.item(), input.size(0))
-			# top1.update(acc1[0], input.size(0))
-			# top5.update(acc5[0], input.size(0))
-			losses.update(loss.item(), input[0].size(0))
-			top1.update(acc1[0], input[0].size(0))
-			top5.update(acc5[0], input[0].size(0))
+			losses.update(loss.item(), input.size(0))
+			top1.update(acc1[0], input.size(0))
+			top5.update(acc5[0], input.size(0))
 
 			# measure elapsed time
 			batch_time.update(time.time() - end)
